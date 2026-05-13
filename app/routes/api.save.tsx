@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "../lib/auth.server";
 import { assertSameOrigin } from "../lib/origin";
 import { applyChanges } from "../lib/apply-changes";
-import { invalidateBundleCache } from "../lib/bundle";
+import { rebuildBundle } from "../lib/bundle";
 import { toErrorResponse, InvalidPayload, PayloadTooLarge } from "../lib/errors";
 
 const MAX_FILES = 2_000;
@@ -48,7 +48,15 @@ export async function action({ request }: Route.ActionArgs) {
 
     const result = await applyChanges({ writes, deletes });
 
-    if (result.applied.length > 0) invalidateBundleCache();
+    if (result.applied.length > 0) {
+      try {
+        await rebuildBundle();
+      } catch (err) {
+        // Save itself succeeded; bundle rebuild failed. Log and continue so admin
+        // sees success — they can retry to refresh the bundle, or restart pm2.
+        console.error("[save] bundle rebuild failed; bundle may be stale:", err);
+      }
+    }
     console.log(`[save] applied=${result.applied.length} failed=${result.failed.length}`);
 
     return Response.json(result, { status: 200 });

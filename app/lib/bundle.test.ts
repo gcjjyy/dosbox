@@ -5,11 +5,13 @@ import os from "node:os";
 import yauzl from "yauzl";
 
 let TMP: string;
+let CACHE_TMP: string;
 beforeEach(async () => {
   TMP = await fs.mkdtemp(path.join(os.tmpdir(), "dosbox-bundle-"));
+  CACHE_TMP = await fs.mkdtemp(path.join(os.tmpdir(), "dosbox-cache-"));
   process.env.DOS_ROOT = TMP;
+  process.env.DOSBOX_CACHE_DIR = CACHE_TMP;
   vi.resetModules();
-  // Sample files
   await fs.writeFile(path.join(TMP, "AUTOEXEC.BAT"), "@ECHO OFF\nPATH C:\\");
   await fs.mkdir(path.join(TMP, "BANGJA"), { recursive: true });
   await fs.writeFile(path.join(TMP, "BANGJA", "GAME.EXE"), Buffer.from([0x4d, 0x5a]));
@@ -40,7 +42,7 @@ function listZipEntries(buf: Buffer): Promise<string[]> {
 }
 
 describe("bundle", () => {
-  it("streams a zip containing .jsdos/dosbox.conf and sample files", async () => {
+  it("streamJsdosBundle lazy-builds and returns a zip with dosbox.conf + DOS files", async () => {
     const { streamJsdosBundle } = await import("./bundle");
     const { body } = await streamJsdosBundle();
     const buf = await streamToBuffer(body);
@@ -50,20 +52,35 @@ describe("bundle", () => {
     expect(entries).toContain("BANGJA/GAME.EXE");
   });
 
-  it("getBundleEtag returns same value within TTL", async () => {
+  it("rebuildBundle writes bundle.jsdos and bundle.etag to the cache dir", async () => {
+    const { rebuildBundle } = await import("./bundle");
+    const etag = await rebuildBundle();
+    const bundleStat = await fs.stat(path.join(CACHE_TMP, "bundle.jsdos"));
+    const onDiskEtag = (await fs.readFile(path.join(CACHE_TMP, "bundle.etag"), "utf8")).trim();
+    expect(bundleStat.size).toBeGreaterThan(0);
+    expect(onDiskEtag).toBe(etag);
+    expect(etag).toMatch(/^"[a-f0-9]{16,}"$/);
+  });
+
+  it("getBundleEtag returns the same value between calls without changes", async () => {
     const { getBundleEtag } = await import("./bundle");
     const a = await getBundleEtag();
     const b = await getBundleEtag();
     expect(a).toBe(b);
-    expect(a).toMatch(/^"[a-f0-9]{16,}"$/);
   });
 
-  it("invalidateBundleCache forces recomputation", async () => {
-    const { getBundleEtag, invalidateBundleCache } = await import("./bundle");
-    const a = await getBundleEtag();
+  it("rebuildBundle picks up new files (etag changes)", async () => {
+    const { rebuildBundle, getBundleEtag } = await import("./bundle");
+    const before = await getBundleEtag();
     await fs.writeFile(path.join(TMP, "NEW.TXT"), "hello");
-    invalidateBundleCache();
-    const b = await getBundleEtag();
-    expect(a).not.toBe(b);
+    await rebuildBundle();
+    const after = await getBundleEtag();
+    expect(before).not.toBe(after);
+  });
+
+  it("concurrent rebuildBundle calls share a single in-flight build", async () => {
+    const { rebuildBundle } = await import("./bundle");
+    const [a, b] = await Promise.all([rebuildBundle(), rebuildBundle()]);
+    expect(a).toBe(b);
   });
 });
