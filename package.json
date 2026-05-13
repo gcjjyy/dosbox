@@ -2,28 +2,41 @@
   "name": "dosbox",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc"
+    "typecheck": "react-router typegen && tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@react-router/node": "7.15.0",
     "@react-router/serve": "7.15.0",
+    "archiver": "^7.0.1",
     "isbot": "^5.1.36",
+    "js-dos": "^8.3.20",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router": "7.15.0"
+    "react-router": "7.15.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@react-router/dev": "7.15.0",
     "@tailwindcss/vite": "^4.2.2",
+    "@types/archiver": "^6.0.4",
     "@types/node": "^22",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/yauzl": "^2.10.3",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
-    "vite": "^8.0.3"
+    "vite": "^8.0.3",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^2.1.9",
+    "yauzl": "^3.3.0"
   }
 }
