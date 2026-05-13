@@ -18,7 +18,11 @@ const DOSBOX_CONF = [
 // js-dos can't handle ~/dos at full size (231 MB / 7,574 files) — extraction
 // completes but DOSBox never reaches ci-ready. Curate to a smaller subset.
 // Override via DOSBOX_ALLOWED_DIRS env (comma-separated top-level names).
-const DEFAULT_ALLOWED_DIRS = "BANGJA15";
+// Verified working set (77 files, ~2 MB). Adding QB45 alone breaks it — not
+// a file-count limit but something inside QB45 that js-dos chokes on.
+// Override via DOSBOX_ALLOWED_DIRS env. Try one new dir at a time; revert if
+// the page stops reaching ci-ready.
+const DEFAULT_ALLOWED_DIRS = "BANGJA,BANGJA15,DOOLY,DOOLY40,MDIR310";
 function allowedTopDirs(): Set<string> {
   const raw = process.env.DOSBOX_ALLOWED_DIRS ?? DEFAULT_ALLOWED_DIRS;
   return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
