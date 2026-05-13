@@ -8,27 +8,26 @@ import archiver from "archiver";
 import { DOS_ROOT } from "./dos-paths";
 
 const DOSBOX_CONF = [
-  "[dosbox]",
-  "machine=svga_s3",
-  "memsize=16",
-  "",
-  "[cpu]",
-  "core=auto",
-  "cputype=auto",
-  "cycles=auto",
-  "",
   "[autoexec]",
   "@ECHO OFF",
   "mount c .",
   "c:",
-  "IF EXIST AUTOEXEC.BAT CALL AUTOEXEC.BAT",
-  "@echo off",
-  "echo.",
-  "echo === dosbox.gcjjyy.dev ===",
-  "echo Type DIR to list files.",
-  "echo.",
   "",
 ].join("\n");
+
+// js-dos can't handle ~/dos at full size (231 MB / 7,574 files) — extraction
+// completes but DOSBox never reaches ci-ready. Curate to a smaller subset.
+// Override via DOSBOX_ALLOWED_DIRS env (comma-separated top-level names).
+const DEFAULT_ALLOWED_DIRS = "BANGJA15";
+function allowedTopDirs(): Set<string> {
+  const raw = process.env.DOSBOX_ALLOWED_DIRS ?? DEFAULT_ALLOWED_DIRS;
+  return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+}
+function isInBundle(rel: string, allow: Set<string>): boolean {
+  const slash = rel.indexOf("/");
+  if (slash < 0) return true; // top-level files (AUTOEXEC.BAT etc) always in
+  return allow.has(rel.slice(0, slash));
+}
 
 function cacheDir(): string {
   return process.env.DOSBOX_CACHE_DIR
@@ -65,10 +64,11 @@ async function walkFiles(root: string): Promise<WalkEntry[]> {
   return out;
 }
 
-function etagFromFiles(files: WalkEntry[]): string {
+function etagFromFiles(files: WalkEntry[], allow: Set<string>): string {
   const h = createHash("sha256");
   h.update(DOSBOX_CONF);
   h.update("\n");
+  h.update("allow:" + [...allow].sort().join(",") + "\n");
   for (const f of files) h.update(`${f.rel}:${f.size}:${f.mtime}\n`);
   return `"${h.digest("hex").slice(0, 32)}"`;
 }
@@ -80,8 +80,9 @@ export async function rebuildBundle(): Promise<string> {
   inFlight = (async () => {
     const dir = cacheDir();
     await fs.mkdir(dir, { recursive: true });
-    const files = await walkFiles(DOS_ROOT);
-    const etag = etagFromFiles(files);
+    const allow = allowedTopDirs();
+    const files = (await walkFiles(DOS_ROOT)).filter((f) => isInBundle(f.rel, allow));
+    const etag = etagFromFiles(files, allow);
     const tmpZip = path.join(dir, `bundle.jsdos.${process.pid}-${Date.now()}.tmp`);
 
     const archive = archiver("zip", { zlib: { level: 6 } });
