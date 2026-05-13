@@ -1,15 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import type { Route } from "./+types/_index";
 import { getSession } from "../lib/auth.server";
-import { DosFrame } from "../components/DosFrame";
+import { DosFrame, type CommandInterface } from "../components/DosFrame";
 import { Toolbar } from "../components/Toolbar";
 import { LoginModal } from "../components/LoginModal";
-import {
-  snapshotFsTree,
-  computeDiff,
-  type JsDosCi,
-  type Baseline,
-} from "../lib/fs-diff";
 import { saveToServer } from "../lib/save";
 
 export function meta(_: Route.MetaArgs) {
@@ -22,43 +16,36 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function Index({ loaderData }: Route.ComponentProps) {
-  const ciRef = useRef<JsDosCi | null>(null);
-  const baselineRef = useRef<Baseline | null>(null);
+  const ciRef = useRef<CommandInterface | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  const onReady = useCallback(async (ci: JsDosCi) => {
+  const onReady = useCallback((ci: CommandInterface) => {
     ciRef.current = ci;
-    baselineRef.current = await snapshotFsTree(ci);
   }, []);
 
-  // Cheap "has changes?" probe — recompute on every save attempt;
-  // we don't poll continuously to keep this simple.
   const checkAndSave = useCallback(async () => {
     const ci = ciRef.current;
-    const baseline = baselineRef.current;
-    if (!ci || !baseline) return;
+    if (!ci) return;
     setSaving(true);
     setStatus(null);
     try {
-      const diff = await computeDiff(ci, baseline);
-      if (diff.writes.length === 0 && diff.deletes.length === 0) {
+      // js-dos v7: ci.persist() returns a zip of the changed FS as Uint8Array.
+      // Empty FS (no changes) → empty Uint8Array or tiny empty-zip; the server
+      // accepts both as a no-op.
+      const bytes = await ci.persist();
+      if (bytes.length === 0) {
         setStatus("변경 없음");
         return;
       }
-      const result = await saveToServer(diff);
-      const newBaseline = new Map(baseline);
-      for (const w of diff.writes) {
-        if (result.applied.includes(w.path)) newBaseline.set(w.path, { size: w.bytes.length });
+      const result = await saveToServer(bytes);
+      if (result.applied.length === 0 && result.failed.length === 0) {
+        setStatus("변경 없음");
+        return;
       }
-      for (const d of diff.deletes) {
-        if (result.applied.includes(d)) newBaseline.delete(d);
-      }
-      baselineRef.current = newBaseline;
       const failedNote = result.failed.length > 0 ? ` (${result.failed.length}개 실패)` : "";
-      const readErrNote = diff.readErrors.length > 0 ? ` (${diff.readErrors.length}개 읽기 실패)` : "";
-      setStatus(`${result.applied.length}개 저장됨${failedNote}${readErrNote}`);
+      setStatus(`${result.applied.length}개 저장됨${failedNote}`);
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err));
     } finally {

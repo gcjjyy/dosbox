@@ -10,7 +10,7 @@ import type { Route } from "./+types/root";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
-  { rel: "stylesheet", href: "https://v8.js-dos.com/latest/js-dos.css" },
+  { rel: "stylesheet", href: "/js-dos/js-dos.css" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -21,7 +21,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
-        <script src="https://v8.js-dos.com/latest/js-dos.js" defer />
+        <script src="/js-dos/js-dos.js" defer />
       </head>
       <body className="h-screen w-screen overflow-hidden">
         {children}

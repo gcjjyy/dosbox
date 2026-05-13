@@ -5,3 +5,11 @@
 # React Router
 /.react-router/
 /build/
+
+# Copied from node_modules/js-dos/dist by `npm run copy-jsdos` (build prereq).
+# Treat as build artifact — npm install + build regenerates it.
+/public/js-dos/
+
+# Playwright MCP scratch (snapshots, console logs)
+/.playwright-mcp/
+*.png
