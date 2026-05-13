@@ -8,11 +8,25 @@ import archiver from "archiver";
 import { DOS_ROOT } from "./dos-paths";
 
 const DOSBOX_CONF = [
+  "[dosbox]",
+  "machine=svga_s3",
+  "memsize=16",
+  "",
+  "[cpu]",
+  "core=auto",
+  "cputype=auto",
+  "cycles=auto",
+  "",
   "[autoexec]",
   "@ECHO OFF",
   "mount c .",
   "c:",
   "IF EXIST AUTOEXEC.BAT CALL AUTOEXEC.BAT",
+  "@echo off",
+  "echo.",
+  "echo === dosbox.gcjjyy.dev ===",
+  "echo Type DIR to list files.",
+  "echo.",
   "",
 ].join("\n");
 
@@ -53,6 +67,8 @@ async function walkFiles(root: string): Promise<WalkEntry[]> {
 
 function etagFromFiles(files: WalkEntry[]): string {
   const h = createHash("sha256");
+  h.update(DOSBOX_CONF);
+  h.update("\n");
   for (const f of files) h.update(`${f.rel}:${f.size}:${f.mtime}\n`);
   return `"${h.digest("hex").slice(0, 32)}"`;
 }
