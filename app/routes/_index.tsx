@@ -25,7 +25,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const ciRef = useRef<JsDosCi | null>(null);
   const baselineRef = useRef<Baseline | null>(null);
   const [showLogin, setShowLogin] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -46,11 +45,9 @@ export default function Index({ loaderData }: Route.ComponentProps) {
       const diff = await computeDiff(ci, baseline);
       if (diff.writes.length === 0 && diff.deletes.length === 0) {
         setStatus("변경 없음");
-        setHasChanges(false);
         return;
       }
       const result = await saveToServer(diff);
-      // update baseline with applied paths only
       const newBaseline = new Map(baseline);
       for (const w of diff.writes) {
         if (result.applied.includes(w.path)) newBaseline.set(w.path, { size: w.bytes.length });
@@ -59,7 +56,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         if (result.applied.includes(d)) newBaseline.delete(d);
       }
       baselineRef.current = newBaseline;
-      setHasChanges(result.failed.length > 0);
       const failedNote = result.failed.length > 0 ? ` (${result.failed.length}개 실패)` : "";
       const readErrNote = diff.readErrors.length > 0 ? ` (${diff.readErrors.length}개 읽기 실패)` : "";
       setStatus(`${result.applied.length}개 저장됨${failedNote}${readErrNote}`);
@@ -79,7 +75,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     <div className="grid h-screen grid-rows-[auto_1fr] bg-black text-gray-100">
       <Toolbar
         isAdmin={loaderData.isAdmin}
-        hasChanges={true}
         saving={saving}
         onLoginClick={() => setShowLogin(true)}
         onLogout={logout}

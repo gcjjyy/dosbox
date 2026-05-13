@@ -14,10 +14,13 @@ const DOSBOX_CONF = [
 ].join("\n");
 
 const ETAG_TTL_MS = 5_000;
-let etagCache: { etag: string; computedAt: number } | null = null;
 
-async function walkFiles(root: string): Promise<{ rel: string; abs: string; size: number; mtime: number }[]> {
-  const out: { rel: string; abs: string; size: number; mtime: number }[] = [];
+interface WalkEntry { rel: string; abs: string; size: number; mtime: number; }
+interface Snapshot { etag: string; files: WalkEntry[]; computedAt: number; }
+let cache: Snapshot | null = null;
+
+async function walkFiles(root: string): Promise<WalkEntry[]> {
+  const out: WalkEntry[] = [];
   async function rec(dir: string) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const e of entries) {
@@ -41,26 +44,26 @@ async function walkFiles(root: string): Promise<{ rel: string; abs: string; size
   return out;
 }
 
-async function computeEtag(): Promise<string> {
+async function refreshCache(): Promise<Snapshot> {
   const files = await walkFiles(DOS_ROOT);
   const h = createHash("sha256");
-  for (const f of files) {
-    h.update(`${f.rel}:${f.size}:${f.mtime}\n`);
-  }
-  return `"${h.digest("hex").slice(0, 32)}"`;
+  for (const f of files) h.update(`${f.rel}:${f.size}:${f.mtime}\n`);
+  const etag = `"${h.digest("hex").slice(0, 32)}"`;
+  cache = { etag, files, computedAt: Date.now() };
+  return cache;
+}
+
+async function getOrRefresh(): Promise<Snapshot> {
+  if (cache && Date.now() - cache.computedAt < ETAG_TTL_MS) return cache;
+  return refreshCache();
 }
 
 export async function getBundleEtag(): Promise<string> {
-  if (etagCache && Date.now() - etagCache.computedAt < ETAG_TTL_MS) {
-    return etagCache.etag;
-  }
-  const etag = await computeEtag();
-  etagCache = { etag, computedAt: Date.now() };
-  return etag;
+  return (await getOrRefresh()).etag;
 }
 
 export function invalidateBundleCache(): void {
-  etagCache = null;
+  cache = null;
 }
 
 export interface BundleStream {
@@ -69,8 +72,7 @@ export interface BundleStream {
 }
 
 export async function streamJsdosBundle(): Promise<BundleStream> {
-  const etag = await getBundleEtag();
-  const files = await walkFiles(DOS_ROOT);
+  const { etag, files } = await getOrRefresh();
   const archive = archiver("zip", { zlib: { level: 6 } });
 
   archive.on("warning", (err) => {
