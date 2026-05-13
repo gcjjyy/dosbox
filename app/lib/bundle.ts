@@ -9,6 +9,8 @@ import { DOS_ROOT } from "./dos-paths";
 const DOSBOX_CONF = [
   "[autoexec]",
   "@ECHO OFF",
+  "mount c .",
+  "c:",
   "IF EXIST AUTOEXEC.BAT CALL AUTOEXEC.BAT",
   "",
 ].join("\n");
