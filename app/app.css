@@ -1,212 +1,118 @@
 @import "tailwindcss";
 
 @theme {
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  --font-crt: "VT323", "Galmuri11", ui-monospace, monospace;
-  --color-phosphor: #4ade7b;
-  --color-phosphor-dim: #1f5a32;
+  /* Modern, distinctive sans (NOT Inter / Roboto). Geist Sans is the display
+     and body face; JetBrains Mono carries the technical voice. */
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Midnight navy palette. Background drifts slightly warmer-blue toward
+     center so it doesn't read as flat black. */
+  --color-navy-bg: #0a0f1f;
+  --color-navy-bg-lift: #0e1530;
+  --color-navy-line: #1f2a4d;
+  --color-navy-text: #e6e8ef;
+  --color-navy-muted: #8b95b3;
+  --color-navy-accent: #5b8def;
 }
 
 html, body {
-  @apply bg-black text-gray-100;
+  background: var(--color-navy-bg);
+  color: var(--color-navy-text);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
 }
 
 html { color-scheme: dark; }
 
-@keyframes crt-flicker {
-  0%, 100% { opacity: 1; }
-  3%       { opacity: 0.82; }
-  6%       { opacity: 1; }
-  53%      { opacity: 1; }
-  55%      { opacity: 0.88; }
-  56%      { opacity: 1; }
+/* ── Boot overlay ─────────────────────────────────────────────────── */
+
+.boot-overlay {
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 45%, var(--color-navy-bg-lift) 0%, var(--color-navy-bg) 70%),
+    var(--color-navy-bg);
+  animation: boot-in 360ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+.boot-overlay--out {
+  animation: boot-out 280ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes boot-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes boot-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 
-@keyframes crt-blink {
-  0%, 49%   { opacity: 1; }
-  50%, 100% { opacity: 0; }
+/* ── Spinner ─────────────────────────────────────────────────────── */
+
+.boot-spinner {
+  position: relative;
+  width: 34px;
+  height: 34px;
+}
+.boot-spinner__track,
+.boot-spinner__arc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+.boot-spinner__track {
+  border: 1.5px solid var(--color-navy-line);
+}
+.boot-spinner__arc {
+  border: 1.5px solid transparent;
+  border-top-color: var(--color-navy-accent);
+  animation: boot-spin 880ms linear infinite;
+}
+@keyframes boot-spin {
+  to { transform: rotate(360deg); }
 }
 
-@keyframes crt-fade-in {
+/* ── Typography ──────────────────────────────────────────────────── */
+
+.boot-wordmark {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  color: var(--color-navy-text);
+  text-transform: lowercase;
+}
+.boot-status {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--color-navy-muted);
+  /* Smooth fade as the status phrase cycles (keyed on phase index). */
+  animation: boot-status-in 320ms ease-out both;
+}
+@keyframes boot-status-in {
   from { opacity: 0; transform: translateY(2px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes crt-power-on {
-  0%  { transform: scaleY(0.005) scaleX(1);   opacity: 0; filter: brightness(2); }
-  10% { transform: scaleY(0.01)  scaleX(1);   opacity: 1; filter: brightness(2); }
-  35% { transform: scaleY(0.04)  scaleX(1);   opacity: 1; filter: brightness(1.8); }
-  60% { transform: scaleY(1)     scaleX(0.4); opacity: 1; filter: brightness(1.4); }
-  85% { transform: scaleY(1)     scaleX(1);   opacity: 1; filter: brightness(1.1); }
-  100%{ transform: scaleY(1)     scaleX(1);   opacity: 1; filter: brightness(1);   }
-}
+/* ── Footer ──────────────────────────────────────────────────────── */
 
-@keyframes crt-scan {
-  0%   { transform: translateY(-100%); }
-  100% { transform: translateY(100vh); }
-}
-
-.crt-screen {
-  font-family: var(--font-crt);
-  color: var(--color-phosphor);
-  text-shadow:
-    0 0 1px var(--color-phosphor),
-    0 0 6px rgba(74, 222, 123, 0.65),
-    0 0 14px rgba(74, 222, 123, 0.35);
-  animation: crt-power-on 700ms cubic-bezier(0.4, 0, 0.2, 1) both,
-             crt-flicker 4s ease-in-out infinite 800ms;
-  background:
-    radial-gradient(ellipse at center, rgba(74, 222, 123, 0.06) 0%, transparent 60%),
-    #060906;
-}
-
-.crt-scanlines::before {
-  content: "";
+.boot-footer {
   position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 2px,
-    rgba(0, 0, 0, 0.28) 2px,
-    rgba(0, 0, 0, 0.28) 3px
-  );
-  pointer-events: none;
-  z-index: 2;
+  right: 24px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--color-navy-muted);
+  opacity: 0.7;
 }
-
-.crt-scanlines::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(120, 255, 170, 0.10),
-    transparent 8%,
-    transparent 92%,
-    rgba(120, 255, 170, 0.10)
-  );
-  pointer-events: none;
-  z-index: 3;
-}
-
-.crt-vignette::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    ellipse at center,
-    transparent 55%,
-    rgba(0, 0, 0, 0.45) 95%,
-    rgba(0, 0, 0, 0.75) 100%
-  );
-  pointer-events: none;
-  z-index: 4;
-}
-
-.crt-scanbar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 14vh;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    rgba(150, 255, 180, 0.04) 40%,
-    rgba(150, 255, 180, 0.10) 50%,
-    rgba(150, 255, 180, 0.04) 60%,
-    transparent
-  );
-  animation: crt-scan 9s linear infinite;
-  pointer-events: none;
-  z-index: 5;
-  mix-blend-mode: screen;
-}
-
-.crt-cursor {
+.boot-footer__dot {
   display: inline-block;
-  width: 0.55em;
-  height: 1em;
-  background: var(--color-phosphor);
-  vertical-align: -0.1em;
-  margin-left: 0.15em;
-  box-shadow: 0 0 6px rgba(74, 222, 123, 0.85);
-  animation: crt-blink 1s steps(1) infinite;
-}
-
-.crt-fade-in {
-  animation: crt-fade-in 220ms ease-out both;
-}
-
-/* CRT power-off — quick collapse to a horizontal line, fade to black.
-   Triggered when we add .crt-fadeout to the boot overlay. */
-@keyframes crt-power-off {
-  0%   { transform: scaleY(1)     scaleX(1);   filter: brightness(1);    opacity: 1; }
-  35%  { transform: scaleY(1)     scaleX(1);   filter: brightness(1.4);  opacity: 1; }
-  60%  { transform: scaleY(0.012) scaleX(1);   filter: brightness(2.4);  opacity: 1; }
-  85%  { transform: scaleY(0.012) scaleX(0.6); filter: brightness(2.0);  opacity: 0.9; }
-  100% { transform: scaleY(0.001) scaleX(0);   filter: brightness(0);    opacity: 0; }
-}
-.crt-screen.crt-fadeout {
-  animation: crt-power-off 520ms cubic-bezier(0.65, 0, 0.35, 1) both;
-}
-
-/* Line-by-line POST log entry — small drift up to land. */
-@keyframes crt-line-in {
-  from { opacity: 0; transform: translateY(3px); filter: blur(1px); }
-  to   { opacity: 1; transform: translateY(0);  filter: blur(0); }
-}
-.crt-line-in {
-  animation: crt-line-in 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
-/* Heavy phosphor glow on the big block-font DOSBOX. */
-.crt-logo-glow {
-  color: var(--color-phosphor);
-  text-shadow:
-    0 0 1px var(--color-phosphor),
-    0 0 6px rgba(74, 222, 123, 0.9),
-    0 0 18px rgba(74, 222, 123, 0.55),
-    0 0 38px rgba(74, 222, 123, 0.35);
-}
-
-/* CRT bezel — soft outer frame around the POST log, like a sub-panel inset. */
-.crt-bezel {
-  position: relative;
-  background: linear-gradient(
-    180deg,
-    rgba(74, 222, 123, 0.04) 0%,
-    rgba(74, 222, 123, 0.015) 100%
-  );
-  border: 1px solid rgba(74, 222, 123, 0.32);
-  box-shadow:
-    inset 0 0 0 1px rgba(74, 222, 123, 0.07),
-    inset 0 0 20px rgba(74, 222, 123, 0.05),
-    0 0 22px rgba(74, 222, 123, 0.12);
-  border-radius: 2px;
-}
-.crt-bezel::before,
-.crt-bezel::after {
-  content: "";
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border: 1px solid var(--color-phosphor);
-  opacity: 0.55;
-}
-.crt-bezel::before { top: -3px; left: -3px;  border-right: 0; border-bottom: 0; }
-.crt-bezel::after  { bottom: -3px; right: -3px; border-left: 0; border-top: 0; }
-
-/* Tiny activity light — slow heartbeat. */
-@keyframes crt-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 123, 0.8); opacity: 0.4; }
-  50%      { box-shadow: 0 0 8px 2px rgba(74, 222, 123, 0.7); opacity: 1; }
-}
-.crt-pulse {
-  animation: crt-pulse 1.6s ease-in-out infinite;
-}
-
-/* Force Galmuri (Korean DOS bitmap font) on tagged elements. */
-.galmuri {
-  font-family: "Galmuri11", "VT323", ui-monospace, monospace;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-navy-accent);
 }

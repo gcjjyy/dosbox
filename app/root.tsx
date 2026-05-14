@@ -18,16 +18,10 @@ export const links: Route.LinksFunction = () => [
   { rel: "stylesheet", href: "/js-dos/js-dos.css" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-  // VT323: pixel-perfect retro CRT mono, used for the boot screen + ASCII art.
-  // IBM Plex Mono: refined fallback for body monospace.
+  // Geist Sans (display + body) and JetBrains Mono (technical voice).
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500&display=swap",
-  },
-  // Galmuri: Korean DOS-era bitmap mono. CDN-hosted, small.
-  {
-    rel: "stylesheet",
-    href: "https://cdn.jsdelivr.net/gh/quiple/galmuri/dist/galmuri.css",
+    href: "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap",
   },
 ];
 
