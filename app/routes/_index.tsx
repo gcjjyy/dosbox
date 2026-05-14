@@ -35,11 +35,11 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     setSaving(true);
     setStatus(null);
     try {
-      // js-dos v7: ci.persist() returns a zip of the changed FS as Uint8Array.
-      // Empty FS (no changes) → empty Uint8Array or tiny empty-zip; the server
-      // accepts both as a no-op.
-      const bytes = await ci.persist();
-      if (bytes.length === 0) {
+      // js-dos v8: ci.persist(true) returns a zip of changed FS as Uint8Array
+      // (or null if no changes / PersistedSockdrives for sockdrive).
+      const persisted = await ci.persist(true);
+      const bytes = persisted instanceof Uint8Array ? persisted : null;
+      if (!bytes || bytes.length === 0) {
         setStatus("변경 없음");
         return;
       }
