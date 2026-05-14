@@ -21,6 +21,9 @@ function runCmd(cmd: string, args: string[], cwd: string): Promise<void> {
 }
 
 const DOSBOX_CONF = [
+  "[cpu]",
+  "cycles=fixed 22500",
+  "",
   "[autoexec]",
   "@ECHO OFF",
   "mount c .",
