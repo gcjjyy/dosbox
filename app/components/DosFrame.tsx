@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CommandInterface } from "js-dos/dist/emulators/types/emulators";
+import { BootScreen } from "./BootScreen";
 
 type DosEvent = "emu-ready" | "bnd-play" | "ci-ready" | "fullscreen-changed";
 
@@ -29,8 +30,11 @@ export interface DosFrameProps {
 
 export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const [bootVisible, setBootVisible] = useState(true);
+  const mountedAt = useRef<number>(0);
 
   useEffect(() => {
+    mountedAt.current = Date.now();
     let cancelled = false;
     let instance: ReturnType<Window["Dos"]> | null = null;
 
@@ -86,7 +90,20 @@ export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
           noNetworking: true,
           onEvent: (event, arg) => {
             if (cancelled) return;
-            if (event === "ci-ready" && arg) onReady(arg as CommandInterface);
+            if (event === "ci-ready" && arg) {
+              onReady(arg as CommandInterface);
+              // Minimum boot-screen display time. On cold visits ci-ready
+              // takes ~4 s naturally, so this is a no-op. On warm visits
+              // (cached bundle, ci-ready in ~200 ms) it keeps the CRT power-on
+              // and POST log readable instead of a sub-second flash.
+              const MIN_MS = 1500;
+              const elapsed = Date.now() - mountedAt.current;
+              const wait = Math.max(0, MIN_MS - elapsed);
+              setTimeout(() => {
+                if (cancelled) return;
+                setBootVisible(false);
+              }, wait);
+            }
           },
         });
       } catch (err) {
@@ -101,5 +118,10 @@ export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
     };
   }, [bundleUrl, onReady, onError]);
 
-  return <div ref={ref} className="size-full" />;
+  return (
+    <div className="relative size-full bg-black">
+      <div ref={ref} className="size-full" />
+      <BootScreen visible={bootVisible} />
+    </div>
+  );
 }
