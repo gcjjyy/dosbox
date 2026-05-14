@@ -34,14 +34,19 @@ export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
     let cancelled = false;
     let instance: ReturnType<Window["Dos"]> | null = null;
 
-    async function wipeJsDosIdb() {
-      // js-dos persists FS deltas in IndexedDB ('js-dos-cache (...)'); once a
-      // session's FS state lands there, every subsequent boot tries to replay
-      // it and DOSBox exits before ci-ready fires (observed: QB45/ADVR_EX
-      // "No such file or directory" + ExitStatus on a brand-new bundle that
-      // didn't even contain QB45 — the path came from the cached session).
-      // The server is the source of truth for ~/dos, so wipe IDB on every
-      // mount before starting js-dos.
+    async function wipeJsDosIdbIfBundleChanged(): Promise<void> {
+      // Only wipe the js-dos IndexedDB cache when the server bundle has
+      // changed (admin saved → new ETag). Wiping on every mount makes repeat
+      // visits re-extract the 80 MB ~/dos every time, killing perf. Same-etag
+      // visits keep the IDB cache so js-dos can reuse its extracted FS.
+      const STORAGE_KEY = "dosbox-last-bundle-etag";
+      let serverEtag = "";
+      try {
+        const r = await fetch(bundleUrl, { method: "HEAD", cache: "no-store" });
+        serverEtag = r.headers.get("etag") ?? "";
+      } catch { /* network blip — treat as unchanged */ return; }
+      const lastSeen = (() => { try { return localStorage.getItem(STORAGE_KEY); } catch { return null; } })();
+      if (serverEtag && serverEtag === lastSeen) return;
       try {
         const dbs = await (indexedDB as unknown as { databases?: () => Promise<{ name?: string }[]> })
           .databases?.() ?? [];
@@ -57,6 +62,7 @@ export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
           });
         }));
       } catch { /* ignore */ }
+      try { if (serverEtag) localStorage.setItem(STORAGE_KEY, serverEtag); } catch { /* ignore */ }
     }
 
     async function boot() {
@@ -69,7 +75,7 @@ export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
         await new Promise((r) => setTimeout(r, 100));
       }
       if (cancelled || !ref.current) return;
-      await wipeJsDosIdb();
+      await wipeJsDosIdbIfBundleChanged();
       if (cancelled || !ref.current) return;
       try {
         instance = window.Dos(ref.current, {
