@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Route } from "./+types/_index";
 import { getSession } from "../lib/auth.server";
 import { DosFrame, type CommandInterface } from "../components/DosFrame";
@@ -20,6 +20,10 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const [showLogin, setShowLogin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  // Mount DosFrame only after client hydration completes. This sidesteps any
+  // server-rendered <div> conflicting with js-dos's DOM mutations on mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const onReady = useCallback((ci: CommandInterface) => {
     ciRef.current = ci;
@@ -68,7 +72,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         onSave={checkAndSave}
       />
       <main className="relative">
-        <DosFrame bundleUrl="/dos.jsdos" onReady={onReady} />
+        {mounted && <DosFrame bundleUrl="/dos.jsdos" onReady={onReady} />}
         {status && (
           <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-black/80 px-3 py-1 text-xs">
             {status}

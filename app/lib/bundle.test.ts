@@ -59,7 +59,7 @@ describe("bundle", () => {
     const onDiskEtag = (await fs.readFile(path.join(CACHE_TMP, "bundle.etag"), "utf8")).trim();
     expect(bundleStat.size).toBeGreaterThan(0);
     expect(onDiskEtag).toBe(etag);
-    expect(etag).toMatch(/^"[a-f0-9]{16,}"$/);
+    expect(etag).toMatch(/^"[\w.-]+"$/);
   });
 
   it("getBundleEtag returns the same value between calls without changes", async () => {

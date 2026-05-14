@@ -1,11 +1,24 @@
 import { promises as fs } from "node:fs";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
-import archiver from "archiver";
 import { DOS_ROOT } from "./dos-paths";
+
+function runCmd(cmd: string, args: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    p.stderr.on("data", (b) => { stderr += String(b); });
+    p.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${cmd} ${args.join(" ")} exited ${code}: ${stderr.slice(0, 500)}`));
+    });
+    p.on("error", reject);
+  });
+}
 
 const DOSBOX_CONF = [
   "[autoexec]",
@@ -70,30 +83,39 @@ export async function rebuildBundle(): Promise<string> {
     const etag = etagFromFiles(files);
     const tmpZip = path.join(dir, `bundle.jsdos.${process.pid}-${Date.now()}.tmp`);
 
-    const archive = archiver("zip", { zlib: { level: 6 } });
-    const out = createWriteStream(tmpZip);
+    // Use the system `zip` binary. Node libraries we tried (archiver, yazl)
+    // all emit streaming-format ZIPs (general-purpose bit 3 set, sizes/CRCs
+    // in trailing data descriptors). js-dos's wlibzip extractor hangs on that
+    // format with larger bundles, so ci-ready never fires. system `zip` writes
+    // a traditional layout (sizes/CRCs in the local header) which wlibzip
+    // handles cleanly.
+    const staging = await fs.mkdtemp(path.join(os.tmpdir(), "dosbox-stage-"));
+    try {
+      await fs.mkdir(path.join(staging, ".jsdos"), { recursive: true });
+      await fs.writeFile(path.join(staging, ".jsdos", "dosbox.conf"), DOSBOX_CONF);
+      // 1) stage .jsdos/ into the tmp zip. Default zip(1) options — keep UT/ux
+      // extra fields. (-X strips them and we saw extraction hang on extra-field-
+      // less archives, though that may have been a coincidence; either way the
+      // default tracks what the working baseline used.)
+      await runCmd("zip", ["-r", "-q", tmpZip, ".jsdos"], staging);
+      // 2) append ~/dos contents to the same zip
+      await runCmd("zip", ["-r", "-q", tmpZip, ".", "-x", ".jsdos/*"], DOS_ROOT);
+    } finally {
+      await fs.rm(staging, { recursive: true, force: true });
+    }
 
-    const closed = new Promise<void>((resolve, reject) => {
-      out.on("close", () => resolve());
-      out.on("error", reject);
-      archive.on("error", reject);
-      archive.on("warning", (err) => {
-        if (err.code !== "ENOENT") console.error("archiver warning:", err);
-      });
-    });
-
-    archive.pipe(out);
-    archive.append(DOSBOX_CONF, { name: ".jsdos/dosbox.conf" });
-    for (const f of files) archive.append(createReadStream(f.abs), { name: f.rel });
-    void archive.finalize();
-    await closed;
-
-    // rename ZIP first so a 304 against the old etag never serves new bytes;
-    // a 200 in the small gap after rename serves new bytes with old etag, which is
-    // harmless (browser thinks it's stale, refetches next time and gets the new etag).
+    // Move the new zip into place atomically.
     await fs.rename(tmpZip, bundlePath());
-    await fs.writeFile(etagPath(), etag);
-    return etag;
+    // Derive the ETag from the on-disk zip's stat so each rebuild produces a
+    // distinct ETag even when walkFiles() would yield the same content hash
+    // (e.g. when only the build tool changed). Without this, browsers that
+    // cached an earlier broken zip keep getting 304 against a stale body —
+    // observed: archiver-built bundles linger in client cache even after we
+    // switched to system zip.
+    const zipStat = await fs.stat(bundlePath());
+    const realEtag = `"${etag.slice(1, -1)}-${zipStat.mtimeMs.toString(36)}-${zipStat.size}"`;
+    await fs.writeFile(etagPath(), realEtag);
+    return realEtag;
   })();
   try { return await inFlight; } finally { inFlight = null; }
 }
