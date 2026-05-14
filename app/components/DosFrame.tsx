@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { CommandInterface } from "js-dos/dist/emulators/types/emulators";
 
 type DosEvent = "emu-ready" | "bnd-play" | "ci-ready" | "fullscreen-changed";
@@ -29,16 +29,10 @@ export interface DosFrameProps {
 
 export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [phase, setPhase] = useState<"loading" | "booting" | "ready">("loading");
-  const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     let instance: ReturnType<Window["Dos"]> | null = null;
-    const startedAt = Date.now();
-    const tick = setInterval(() => {
-      if (!cancelled) setSeconds(Math.floor((Date.now() - startedAt) / 1000));
-    }, 1000);
 
     async function wipeJsDosIdb() {
       // js-dos persists FS deltas in IndexedDB ('js-dos-cache (...)'); once a
@@ -86,11 +80,7 @@ export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
           noNetworking: true,
           onEvent: (event, arg) => {
             if (cancelled) return;
-            if (event === "bnd-play") setPhase("booting");
-            if (event === "ci-ready" && arg) {
-              setPhase("ready");
-              onReady(arg as CommandInterface);
-            }
+            if (event === "ci-ready" && arg) onReady(arg as CommandInterface);
           },
         });
       } catch (err) {
@@ -101,24 +91,9 @@ export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
 
     return () => {
       cancelled = true;
-      clearInterval(tick);
       try { instance?.stop(); } catch { /* ignore */ }
     };
   }, [bundleUrl, onReady, onError]);
 
-  return (
-    <div className="relative size-full">
-      <div ref={ref} className="size-full" />
-      {phase !== "ready" && (
-        <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded bg-black/85 px-4 py-2 text-center text-xs text-gray-200 shadow-lg">
-          <div className="font-mono">
-            {phase === "loading" ? `로딩 중… (${seconds}s)` : `DOSBox 부팅 중… (${seconds}s)`}
-          </div>
-          <div className="mt-1 text-[10px] text-gray-400">
-            첫 로드는 시간이 좀 걸려요. 다음 방문부터 빠릅니다.
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <div ref={ref} className="size-full" />;
 }
