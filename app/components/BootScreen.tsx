@@ -34,11 +34,12 @@ export function BootScreen({
       aria-hidden={!visible}
     >
       <div className="boot-stack">
+        <img className="boot-icon" src="/favicon-96x96.png" width={64} height={64} alt="" aria-hidden="true" />
         <div className="boot-progress" role="progressbar" aria-label="Loading" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
           <div className="boot-progress__track">
             <div className="boot-progress__fill" style={{ width: `${pct}%` }} />
+            <span className="boot-progress__pct">{pct}%</span>
           </div>
-          <span className="boot-progress__pct">{pct.toString().padStart(2, "0")}%</span>
         </div>
 
         <div className="boot-text">

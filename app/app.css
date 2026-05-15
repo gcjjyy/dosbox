@@ -61,6 +61,19 @@ html { color-scheme: dark; }
   text-align: center;
 }
 
+/* ── Icon ────────────────────────────────────────────────────────── */
+
+.boot-icon {
+  width: 64px;
+  height: 64px;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--color-navy-accent) 50%, transparent));
+  animation: boot-icon-pulse 2.2s ease-in-out infinite;
+}
+@keyframes boot-icon-pulse {
+  0%, 100% { opacity: 0.85; transform: translateY(0); }
+  50%      { opacity: 1;    transform: translateY(-1px); }
+}
+
 /* ── Linear progress ─────────────────────────────────────────────── */
 
 .boot-progress {
