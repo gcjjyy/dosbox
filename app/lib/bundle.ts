@@ -140,10 +140,12 @@ export async function getBundleEtag(): Promise<string> {
 export interface BundleStream {
   body: ReadableStream<Uint8Array>;
   etag: string;
+  size: number;
 }
 
 export async function streamJsdosBundle(): Promise<BundleStream> {
   const etag = await ensureBundle();
+  const st = await fs.stat(bundlePath());
   const body = Readable.toWeb(createReadStream(bundlePath())) as unknown as ReadableStream<Uint8Array>;
-  return { body, etag };
+  return { body, etag, size: st.size };
 }

@@ -27,9 +27,13 @@ export interface CommandInterfaceEvents {
   onExit: (fn: () => void) => void;
 }
 
+interface BackendOptions {
+  onExtractProgress?: (bundleIndex: number, file: string, extracted: number, total: number) => void;
+}
+
 interface EmulatorsGlobal {
   pathPrefix: string;
-  dosboxXDirect: (init: Uint8Array[]) => Promise<CommandInterface>;
+  dosboxXDirect: (init: Uint8Array[], options?: BackendOptions) => Promise<CommandInterface>;
 }
 
 declare global {
@@ -63,6 +67,8 @@ export interface DosEmulatorOpts {
   onReady?: (ci: CommandInterface) => void;
   onFirstFrame?: () => void;
   onError?: (err: unknown) => void;
+  /** Fraction in [0,1] of bundle extraction progress reported by the WASM bridge. */
+  onExtractProgress?: (fraction: number) => void;
 }
 
 export class DosEmulator {
@@ -104,7 +110,12 @@ export class DosEmulator {
     const emu = window.emulators;
     if (!emu) throw new Error("window.emulators not loaded");
     emu.pathPrefix = "/js-dos/emulators/";
-    const ci = await emu.dosboxXDirect([this.opts.bundle]);
+    const onExtract = this.opts.onExtractProgress;
+    const ci = await emu.dosboxXDirect([this.opts.bundle], onExtract ? {
+      onExtractProgress: (_idx, _file, extracted, total) => {
+        if (total > 0) onExtract(Math.min(1, extracted / total));
+      },
+    } : undefined);
     if (this.exiting) {
       await ci.exit().catch(() => undefined);
       return;

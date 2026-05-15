@@ -6,12 +6,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   if (request.headers.get("if-none-match") === etag) {
     return new Response(null, { status: 304, headers: { ETag: etag } });
   }
-  const { body, etag: bodyEtag } = await streamJsdosBundle();
+  const { body, etag: bodyEtag, size } = await streamJsdosBundle();
   return new Response(body, {
     status: 200,
     headers: {
       "Content-Type": "application/octet-stream",
       "Content-Disposition": 'inline; filename="dos.jsdos"',
+      "Content-Length": String(size),
       ETag: bodyEtag,
       "Cache-Control": "no-cache, must-revalidate",
     },

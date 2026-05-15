@@ -1,7 +1,7 @@
 // app/components/DosFrame.tsx
 import { useEffect, useRef, useState } from "react";
 import { DosEmulator, type CommandInterface } from "../lib/dos-emulator";
-import { BootScreen } from "./BootScreen";
+import { BootScreen, type BootPhase } from "./BootScreen";
 
 export type { CommandInterface };
 export type { DosEmulator };
@@ -18,46 +18,126 @@ export interface DosFrameProps {
   height?: number | null;
 }
 
+// Progress budget across the four phases. Sums to 1.0.
+//   wait     : waiting for emulators.js (<script src>) to load
+//   download : fetching the .jsdos bundle (real bytes/total)
+//   extract  : wlibzip unpacking inside the WASM bridge
+//   boot     : extract complete → first frame from the emulator
+const W = { wait: 0.05, download: 0.55, extract: 0.35, boot: 0.05 } as const;
+
+async function streamBundle(
+  url: string,
+  signal: AbortSignal,
+  onDownload: (fraction: number) => void,
+): Promise<Uint8Array> {
+  const r = await fetch(url, { cache: "no-cache", signal });
+  if (!r.ok) throw new Error(`bundle fetch failed: ${r.status}`);
+  const totalHeader = r.headers.get("Content-Length");
+  const total = totalHeader ? Number(totalHeader) : 0;
+  if (!r.body) {
+    // Older browsers / shimmed responses — fall back to a single arrayBuffer.
+    const buf = new Uint8Array(await r.arrayBuffer());
+    onDownload(1);
+    return buf;
+  }
+  const reader = r.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (total > 0) onDownload(Math.min(1, received / total));
+  }
+  // Concat. We allocate a fresh contiguous buffer because the WASM bridge
+  // wants a single Uint8Array.
+  const out = new Uint8Array(received);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  if (total === 0) onDownload(1);
+  return out;
+}
+
 export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, height }: DosFrameProps) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const [bootVisible, setBootVisible] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState<BootPhase>("wait");
   const mountedAt = useRef<number>(0);
   const fixedSize = width != null && height != null;
 
   useEffect(() => {
     mountedAt.current = Date.now();
+    const ac = new AbortController();
     let cancelled = false;
     let emulator: DosEmulator | null = null;
 
+    function setPhaseProgress(p: BootPhase, fraction: number) {
+      // Translate phase + intra-phase fraction into a global [0,1] value.
+      const f = Math.max(0, Math.min(1, fraction));
+      let base = 0;
+      if (p === "download") base = W.wait;
+      else if (p === "extract") base = W.wait + W.download;
+      else if (p === "boot") base = W.wait + W.download + W.extract;
+      const slice =
+        p === "wait" ? W.wait :
+        p === "download" ? W.download :
+        p === "extract" ? W.extract :
+        W.boot;
+      setPhase(p);
+      setProgress((prev) => {
+        const next = base + slice * f;
+        // Progress is monotonic — protects against any out-of-order callbacks.
+        return next > prev ? next : prev;
+      });
+    }
+
     async function boot() {
+      // ── 1. wait for emulators.js to load ───────────────────────────
+      setPhaseProgress("wait", 0);
       const start = Date.now();
       while (!window.emulators) {
         if (Date.now() - start > 30_000) {
           onError?.(new Error("emulators failed to load within 30s"));
           return;
         }
+        // Push a faint pulse so the bar isn't dead while we wait — capped at
+        // 80% of the wait slice so the next phase still feels like a jump.
+        const elapsed = Date.now() - start;
+        setPhaseProgress("wait", Math.min(0.8, elapsed / 2000));
         await new Promise((r) => setTimeout(r, 100));
       }
+      setPhaseProgress("wait", 1);
       if (cancelled || !ref.current) return;
 
+      // ── 2. download bundle (real bytes via streaming reader) ───────
       let bundle: Uint8Array;
       try {
-        const r = await fetch(bundleUrl, { cache: "no-cache" });
-        if (!r.ok) throw new Error(`bundle fetch failed: ${r.status}`);
-        bundle = new Uint8Array(await r.arrayBuffer());
+        setPhaseProgress("download", 0);
+        bundle = await streamBundle(bundleUrl, ac.signal, (f) => setPhaseProgress("download", f));
       } catch (err) {
-        onError?.(err);
+        if (!cancelled) onError?.(err);
         return;
       }
       if (cancelled || !ref.current) return;
+      setPhaseProgress("download", 1);
 
+      // ── 3. extract (BackendOptions.onExtractProgress) ─ 4. boot ────
+      setPhaseProgress("extract", 0);
       emulator = new DosEmulator({
         canvas: ref.current,
         bundle,
-        onReady,
+        onExtractProgress: (f) => setPhaseProgress("extract", f),
+        onReady: (ci) => {
+          // Extract is done by the time onReady fires inside the bridge,
+          // but the bridge doesn't always emit a final 1.0 progress tick.
+          setPhaseProgress("extract", 1);
+          setPhaseProgress("boot", 0.4);
+          onReady(ci);
+        },
         onFirstFrame: () => {
-          // Minimum boot-screen display time. On warm visits the first frame
-          // can arrive in ~200 ms; this keeps the splash readable.
+          setPhaseProgress("boot", 1);
           const MIN_MS = 1500;
           const elapsed = Date.now() - mountedAt.current;
           const wait = Math.max(0, MIN_MS - elapsed);
@@ -74,6 +154,7 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
 
     return () => {
       cancelled = true;
+      ac.abort();
       if (emulator) {
         onEmulator?.(null);
         void emulator.destroy().catch(() => undefined);
@@ -88,7 +169,7 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
         className={fixedSize ? "dos-canvas dos-canvas--fixed" : "dos-canvas dos-canvas--fill"}
         style={fixedSize ? { width: `${width}px`, height: `${height}px` } : undefined}
       />
-      <BootScreen visible={bootVisible} />
+      <BootScreen visible={bootVisible} progress={progress} phase={phase} />
     </div>
   );
 }

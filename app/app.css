@@ -45,29 +45,55 @@ html { color-scheme: dark; }
   to   { opacity: 0; }
 }
 
-/* ── Spinner ─────────────────────────────────────────────────────── */
+/* ── Stack ──────────────────────────────────────────────────────── */
 
-.boot-spinner {
+.boot-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+.boot-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+/* ── Linear progress ─────────────────────────────────────────────── */
+
+.boot-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 280px;
+}
+.boot-progress__track {
   position: relative;
-  width: 34px;
-  height: 34px;
+  flex: 1;
+  height: 2px;
+  background: var(--color-navy-line);
+  border-radius: 1px;
+  overflow: hidden;
 }
-.boot-spinner__track,
-.boot-spinner__arc {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
+.boot-progress__fill {
+  height: 100%;
+  background: var(--color-navy-accent);
+  /* The bar drives real progress, so transitions only smooth callback jitter —
+     keep them short so 0→100% in a warm cache still feels snappy. */
+  transition: width 220ms cubic-bezier(0.2, 0, 0, 1);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-navy-accent) 60%, transparent);
 }
-.boot-spinner__track {
-  border: 1.5px solid var(--color-navy-line);
-}
-.boot-spinner__arc {
-  border: 1.5px solid transparent;
-  border-top-color: var(--color-navy-accent);
-  animation: boot-spin 880ms linear infinite;
-}
-@keyframes boot-spin {
-  to { transform: rotate(360deg); }
+.boot-progress__pct {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--color-navy-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+  text-align: right;
 }
 
 /* ── Typography ──────────────────────────────────────────────────── */
@@ -86,7 +112,7 @@ html { color-scheme: dark; }
   font-weight: 400;
   letter-spacing: 0.01em;
   color: var(--color-navy-muted);
-  /* Smooth fade as the status phrase cycles (keyed on phase index). */
+  /* Smooth fade as the phase label changes (keyed on phase). */
   animation: boot-status-in 320ms ease-out both;
 }
 @keyframes boot-status-in {
