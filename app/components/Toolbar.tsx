@@ -7,6 +7,12 @@ export interface ToolbarProps {
   onResolutionChange: (id: ResolutionId) => void;
   vkbVisible: boolean;
   onVkbToggle: () => void;
+  // Per-user state save
+  savingUserState: boolean;
+  hasUserState: boolean;
+  onUserSave: () => void;
+  onUserDelete: () => void;
+  // Admin actions
   onLoginClick: () => void;
   onLogout: () => void;
   onSave: () => void;
@@ -19,6 +25,10 @@ export function Toolbar({
   onResolutionChange,
   vkbVisible,
   onVkbToggle,
+  savingUserState,
+  hasUserState,
+  onUserSave,
+  onUserDelete,
   onLoginClick,
   onLogout,
   onSave,
@@ -39,17 +49,42 @@ export function Toolbar({
         </button>
         <ResolutionPicker value={resolutionId} onChange={onResolutionChange} />
         <span className="toolbar__sep" aria-hidden="true" />
+        {hasUserState && (
+          <button
+            type="button"
+            onClick={onUserDelete}
+            className="toolbar__icon"
+            title="저장 삭제"
+            aria-label="저장 상태 삭제"
+          >
+            🗑
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onUserSave}
+          disabled={savingUserState}
+          className="toolbar__ghost"
+        >
+          {savingUserState ? "저장 중…" : "내 저장"}
+        </button>
+        <span className="toolbar__sep" aria-hidden="true" />
         {isAdmin ? (
           <>
-            <button onClick={onSave} disabled={saving} className="toolbar__save">
-              {saving ? "저장 중…" : "저장"}
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="toolbar__save"
+            >
+              {saving ? "저장 중…" : "관리자 저장"}
             </button>
-            <button onClick={onLogout} className="toolbar__ghost">
+            <button type="button" onClick={onLogout} className="toolbar__ghost">
               로그아웃
             </button>
           </>
         ) : (
-          <button onClick={onLoginClick} className="toolbar__ghost">
+          <button type="button" onClick={onLoginClick} className="toolbar__ghost">
             관리자
           </button>
         )}

@@ -8,6 +8,8 @@ import { VirtualKeyboard } from "../components/VirtualKeyboard";
 import { resolutionById } from "../components/ResolutionPicker";
 import { useResolution } from "../lib/use-resolution";
 import { useVirtualKeyboard } from "../lib/use-virtual-keyboard";
+import { useUserState } from "../lib/use-user-state";
+import { clearUserState, writeUserState } from "../lib/user-state";
 import { saveToServer } from "../lib/save";
 
 export function meta(_: Route.MetaArgs) {
@@ -24,12 +26,14 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const emulatorRef = useRef<DosEmulator | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingUserState, setSavingUserState] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   const [resolutionId, setResolutionId] = useResolution();
   const resolution = resolutionById(resolutionId);
   const [vkbVisible, toggleVkb] = useVirtualKeyboard();
+  const [hasUserStateValue, refreshHasUserState] = useUserState();
 
   const onReady = useCallback((ci: CommandInterface) => {
     ciRef.current = ci;
@@ -73,6 +77,43 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     }
   }, []);
 
+  const onUserSave = useCallback(async () => {
+    const ci = ciRef.current;
+    if (!ci) return;
+    setSavingUserState(true);
+    setStatus(null);
+    try {
+      const persisted = await ci.persist(true);
+      const bytes = persisted instanceof Uint8Array ? persisted : null;
+      if (!bytes || bytes.length === 0) {
+        setStatus("변경 없음");
+        return;
+      }
+      if (bytes.length > 3_500_000) {
+        setStatus(`저장 실패: 용량 초과 (${(bytes.length / 1024 / 1024).toFixed(1)}MB)`);
+        return;
+      }
+      try {
+        writeUserState(bytes);
+      } catch (err) {
+        setStatus(err instanceof Error ? `저장 실패: ${err.message}` : "저장 실패");
+        return;
+      }
+      refreshHasUserState();
+      setStatus(`저장됨 (${(bytes.length / 1024).toFixed(0)}KB)`);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingUserState(false);
+    }
+  }, [refreshHasUserState]);
+
+  const onUserDelete = useCallback(() => {
+    if (!window.confirm("저장된 상태를 삭제하고 처음부터 시작합니다. 진행할까요?")) return;
+    clearUserState();
+    window.location.reload();
+  }, []);
+
   const logout = useCallback(async () => {
     await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
     window.location.reload();
@@ -87,6 +128,10 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         onResolutionChange={setResolutionId}
         vkbVisible={vkbVisible}
         onVkbToggle={toggleVkb}
+        savingUserState={savingUserState}
+        hasUserState={hasUserStateValue}
+        onUserSave={onUserSave}
+        onUserDelete={onUserDelete}
         onLoginClick={() => setShowLogin(true)}
         onLogout={logout}
         onSave={checkAndSave}
