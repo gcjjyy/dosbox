@@ -74,8 +74,10 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
 
     return () => {
       cancelled = true;
-      onEmulator?.(null);
-      void emulator?.destroy().catch(() => undefined);
+      if (emulator) {
+        onEmulator?.(null);
+        void emulator.destroy().catch(() => undefined);
+      }
     };
   }, [bundleUrl, onReady, onError, onEmulator]);
 
