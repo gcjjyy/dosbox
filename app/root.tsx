@@ -15,7 +15,6 @@ export const links: Route.LinksFunction = () => [
   { rel: "icon", type: "image/png", sizes: "96x96", href: "/favicon-96x96.png" },
   { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
   { rel: "manifest", href: "/site.webmanifest" },
-  { rel: "stylesheet", href: "/js-dos/js-dos.css" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
   // Geist Sans (display + body) and JetBrains Mono (technical voice).
@@ -33,7 +32,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
-        <script src="/js-dos/js-dos.js" defer />
+        <script src="/js-dos/emulators/emulators.js" defer />
       </head>
       <body className="h-dvh w-screen overflow-hidden">
         {children}
