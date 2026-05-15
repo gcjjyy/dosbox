@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DosEmulator, type CommandInterface } from "../lib/dos-emulator";
 import { BootScreen, type BootPhase } from "./BootScreen";
+import { readUserState } from "../lib/user-state";
 
 export type { CommandInterface };
 export type { DosEmulator };
@@ -125,9 +126,13 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
 
       // ── 3. extract (BackendOptions.onExtractProgress) ─ 4. boot ────
       setPhaseProgress("extract", 0);
+      // Read the per-user save (if any) once at boot. The toolbar's reactive
+      // useUserState() hook covers UI; the engine just needs the bytes here.
+      const overlay = readUserState();
       emulator = new DosEmulator({
         canvas: ref.current,
         bundle,
+        overlay,
         onExtractProgress: (f) => setPhaseProgress("extract", f),
         onReady: (ci) => {
           // Extract is done by the time onReady fires inside the bridge,
