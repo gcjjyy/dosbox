@@ -5,7 +5,7 @@
 // Shift/Ctrl/Alt latch on tap, release after the next non-modifier
 // key's pointerup. Tap a latched modifier again to clear it manually.
 
-import { useCallback, useState } from "react";
+import { useCallback, useReducer, useRef } from "react";
 import { SC } from "../lib/dos-keymap";
 
 export interface VirtualKeyboardProps {
@@ -75,50 +75,48 @@ const ROWS: KeyDef[][] = [
 ];
 
 export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
-  // pressed: ids of non-modifier keys currently held (for visual feedback)
-  const [pressed, setPressed] = useState<Set<string>>(new Set());
-  // stickyMods: scancodes of currently-latched modifiers
-  const [stickyMods, setStickyMods] = useState<Set<number>>(new Set());
+  // Refs hold the authoritative state for emit dedup (synchronous mutation).
+  // setRender bumps a counter to trigger re-render after each mutation.
+  // We can't use useState here: setState is async, so two pointer events
+  // firing before React re-renders would both pass the "has(id)" guard and
+  // each call onKeyDown — sending duplicate scancodes to DOSBox.
+  const pressedRef = useRef<Set<string>>(new Set());
+  const stickyModsRef = useRef<Set<number>>(new Set());
+  const [, setRender] = useReducer((x: number) => x + 1, 0);
 
   const handleDown = useCallback((id: string, k: KeyDef) => {
     if (k.modifier) {
-      setStickyMods((prev) => {
-        const n = new Set(prev);
-        if (n.has(k.code)) {
-          n.delete(k.code);
-          onKeyUp(k.code);
-        } else {
-          n.add(k.code);
-          onKeyDown(k.code);
-        }
-        return n;
-      });
+      const mods = stickyModsRef.current;
+      if (mods.has(k.code)) {
+        mods.delete(k.code);
+        onKeyUp(k.code);
+      } else {
+        mods.add(k.code);
+        onKeyDown(k.code);
+      }
+      setRender();
       return;
     }
-    setPressed((prev) => {
-      if (prev.has(id)) return prev;
-      const n = new Set(prev);
-      n.add(id);
-      return n;
-    });
+    const pressed = pressedRef.current;
+    if (pressed.has(id)) return;
+    pressed.add(id);
     onKeyDown(k.code);
+    setRender();
   }, [onKeyDown, onKeyUp]);
 
   const handleUp = useCallback((id: string, k: KeyDef) => {
     if (k.modifier) return;
-    setPressed((prev) => {
-      if (!prev.has(id)) return prev;
-      const n = new Set(prev);
-      n.delete(id);
-      return n;
-    });
+    const pressed = pressedRef.current;
+    if (!pressed.has(id)) return; // already released by pointerLeave/cancel
+    pressed.delete(id);
     onKeyUp(k.code);
     // After a non-modifier release, clear any sticky modifiers.
-    setStickyMods((prev) => {
-      if (prev.size === 0) return prev;
-      for (const m of prev) onKeyUp(m);
-      return new Set();
-    });
+    const mods = stickyModsRef.current;
+    if (mods.size > 0) {
+      for (const m of mods) onKeyUp(m);
+      mods.clear();
+    }
+    setRender();
   }, [onKeyUp]);
 
   return (
@@ -127,11 +125,18 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
         <div className="vkb-row" key={ri}>
           {row.map((k, ki) => {
             const id = `${ri}-${ki}`;
-            const isPressed = k.modifier ? stickyMods.has(k.code) : pressed.has(id);
+            // For modifier keys, the same scancode may appear in multiple cells
+            // (e.g. left- and right-Alt both map to SC.ALT). The shared latch
+            // state means both cells light up together — intentional.
+            const isPressed = k.modifier
+              ? stickyModsRef.current.has(k.code)
+              : pressedRef.current.has(id);
             return (
               <button
                 key={id}
                 type="button"
+                // tabIndex=-1: keep keyboard focus on the canvas so physical
+                // typing reaches the emulator, not these buttons.
                 tabIndex={-1}
                 aria-pressed={isPressed}
                 className={
