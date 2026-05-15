@@ -318,12 +318,24 @@ export class DosEmulator {
     // and then plays back as a long delayed burst after resume().
     if (audioCtx.state !== "running") return;
     if (samples.length === 0) return;
+    const now = audioCtx.currentTime;
+    // The WASM emulator runs in a Worker and posts sound samples back to the
+    // main thread. Chrome batches those messages while the main thread is
+    // busy (WASM load + bundle extract + first paint), then drains the queue
+    // in a burst once it idles. Each chunk advances `nextAudioTime` by its
+    // full duration even though wall-clock barely moved, so without a cap
+    // the schedule cursor races ahead of `currentTime` and every later
+    // sample is queued in the future — audio lags video by that lead. Keep
+    // the lead tight (~one chunk of jitter tolerance) so steady-state lag
+    // stays below the AV-sync perception threshold.
+    const MAX_LEAD = 0.01;
+    if (this.nextAudioTime - now > MAX_LEAD) return;
     const buffer = audioCtx.createBuffer(1, samples.length, audioCtx.sampleRate);
     buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0);
     const source = audioCtx.createBufferSource();
     source.buffer = buffer;
     source.connect(audioCtx.destination);
-    const t = Math.max(audioCtx.currentTime, this.nextAudioTime);
+    const t = Math.max(now, this.nextAudioTime);
     source.start(t);
     this.nextAudioTime = t + buffer.duration;
   }
