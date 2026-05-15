@@ -477,6 +477,47 @@ html { color-scheme: dark; }
 .vkb-key--mod.vkb-key--pressed,
 .vkb-key--mod:active { color: #050912; }
 
+/* ── Phone layout (≤640px) ───────────────────────────────────────── */
+/* On phones the keyboard joins the grid as a bottom row instead of
+   floating over the canvas, the DOS canvas fits the available width at
+   the top, and the arrow cluster flexes so rows 5/6 align with rows
+   1-4 (the fixed 156px cluster squeezes letter keys at narrow widths). */
+@media (max-width: 640px) {
+  .vkb {
+    position: static;
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+    padding: 6px 4px;
+    gap: 4px;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+  }
+  .vkb-row { gap: 4px; }
+  .vkb-arrows-col {
+    flex: 3 1 0;
+    min-width: 0;
+    gap: 4px;
+  }
+  .vkb-key {
+    min-height: 40px;
+    font-size: 12px;
+    padding: 4px 0;
+  }
+  .vkb-key--mod { font-size: 10px; }
+
+  .dos-stage { align-items: start; overflow: hidden; }
+  .dos-canvas--fixed {
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    box-shadow: none;
+  }
+}
+
 /* ── Toolbar icon button ─────────────────────────────────────────── */
 
 .toolbar__icon {
