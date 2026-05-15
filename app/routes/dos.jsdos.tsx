@@ -14,7 +14,10 @@ export async function loader({ request }: Route.LoaderArgs) {
       "Content-Disposition": 'inline; filename="dos.jsdos"',
       "Content-Length": String(size),
       ETag: bodyEtag,
-      "Cache-Control": "no-cache, must-revalidate",
+      // no-transform stops Cloudflare from brotli-recompressing the bundle.
+      // When CF compresses, it strips Content-Length, which breaks the
+      // streaming download progress bar (received/total falls back to 0).
+      "Cache-Control": "no-cache, must-revalidate, no-transform",
     },
   });
 }
