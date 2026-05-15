@@ -1,62 +1,94 @@
 // app/lib/dos-keymap.ts
 //
-// KeyboardEvent.code → USB HID usage code (SDL2 scancode) lookup.
-// emulators(.dosboxXDirect → CommandInterface).sendKeyEvent and
-// simulateKeyPress take these numeric codes. Source: USB HID Usage
-// Tables 1.12, "Keyboard / Keypad Page" — values match SDL2 SDL_Scancode.
+// KeyboardEvent.code → js-dos / emulators keycode lookup.
+//
+// IMPORTANT: emulators' CommandInterface.sendKeyEvent / simulateKeyPress
+// expect GLFW-style keycodes — NOT SDL2 scancodes / USB HID usage IDs.
+// (E.g. 'A' is 65 here, not 4; Enter is 257, not 40; Space is 32, not 44;
+// ArrowUp is 265, not 82.) The constants below are taken directly from the
+// KBD_* table in node_modules/js-dos/dist/js-dos.js. Right-side modifiers
+// match GLFW's 344/345/346 range; left-side modifiers match GLFW's 340-342.
 
 export const keymap: Readonly<Record<string, number>> = {
-  // Letters
-  KeyA: 4, KeyB: 5, KeyC: 6, KeyD: 7, KeyE: 8, KeyF: 9, KeyG: 10,
-  KeyH: 11, KeyI: 12, KeyJ: 13, KeyK: 14, KeyL: 15, KeyM: 16, KeyN: 17,
-  KeyO: 18, KeyP: 19, KeyQ: 20, KeyR: 21, KeyS: 22, KeyT: 23, KeyU: 24,
-  KeyV: 25, KeyW: 26, KeyX: 27, KeyY: 28, KeyZ: 29,
+  // Letters (uppercase ASCII)
+  KeyA: 65, KeyB: 66, KeyC: 67, KeyD: 68, KeyE: 69, KeyF: 70, KeyG: 71,
+  KeyH: 72, KeyI: 73, KeyJ: 74, KeyK: 75, KeyL: 76, KeyM: 77, KeyN: 78,
+  KeyO: 79, KeyP: 80, KeyQ: 81, KeyR: 82, KeyS: 83, KeyT: 84, KeyU: 85,
+  KeyV: 86, KeyW: 87, KeyX: 88, KeyY: 89, KeyZ: 90,
 
-  // Top-row digits
-  Digit1: 30, Digit2: 31, Digit3: 32, Digit4: 33, Digit5: 34,
-  Digit6: 35, Digit7: 36, Digit8: 37, Digit9: 38, Digit0: 39,
-
-  // Control keys
-  Enter: 40, Escape: 41, Backspace: 42, Tab: 43, Space: 44,
+  // Top-row digits (ASCII)
+  Digit0: 48, Digit1: 49, Digit2: 50, Digit3: 51, Digit4: 52,
+  Digit5: 53, Digit6: 54, Digit7: 55, Digit8: 56, Digit9: 57,
 
   // Punctuation
-  Minus: 45, Equal: 46,
-  BracketLeft: 47, BracketRight: 48, Backslash: 49,
-  Semicolon: 51, Quote: 52, Backquote: 53,
-  Comma: 54, Period: 55, Slash: 56, CapsLock: 57,
+  Space: 32,
+  Quote: 39,           // '
+  Comma: 44,           // ,
+  Minus: 45,           // -
+  Period: 46,          // .
+  Slash: 47,           // /
+  Semicolon: 59,       // ;
+  Equal: 61,           // =
+  BracketLeft: 91,     // [
+  Backslash: 92,       // \
+  BracketRight: 93,    // ]
+  Backquote: 96,       // `
 
-  // Function keys
-  F1: 58, F2: 59, F3: 60, F4: 61, F5: 62, F6: 63, F7: 64,
-  F8: 65, F9: 66, F10: 67, F11: 68, F12: 69,
+  // Control / editing
+  Escape: 256,
+  Enter: 257,
+  Tab: 258,
+  Backspace: 259,
+  Insert: 260,
+  Delete: 261,
 
   // Navigation
-  PrintScreen: 70, ScrollLock: 71, Pause: 72,
-  Insert: 73, Home: 74, PageUp: 75, Delete: 76, End: 77, PageDown: 78,
-  ArrowRight: 79, ArrowLeft: 80, ArrowDown: 81, ArrowUp: 82,
+  ArrowRight: 262,
+  ArrowLeft: 263,
+  ArrowDown: 264,
+  ArrowUp: 265,
+  PageUp: 266,
+  PageDown: 267,
+  Home: 268,
+  End: 269,
+
+  // Locks / system
+  CapsLock: 280,
+  ScrollLock: 281,
+  NumLock: 282,
+  PrintScreen: 283,
+  Pause: 284,
+
+  // Function keys
+  F1: 290, F2: 291, F3: 292, F4: 293, F5: 294, F6: 295, F7: 296,
+  F8: 297, F9: 298, F10: 299, F11: 300, F12: 301,
 
   // Numpad
-  NumLock: 83, NumpadDivide: 84, NumpadMultiply: 85,
-  NumpadSubtract: 86, NumpadAdd: 87, NumpadEnter: 88,
-  Numpad1: 89, Numpad2: 90, Numpad3: 91, Numpad4: 92, Numpad5: 93,
-  Numpad6: 94, Numpad7: 95, Numpad8: 96, Numpad9: 97, Numpad0: 98,
-  NumpadDecimal: 99,
+  Numpad0: 320, Numpad1: 321, Numpad2: 322, Numpad3: 323, Numpad4: 324,
+  Numpad5: 325, Numpad6: 326, Numpad7: 327, Numpad8: 328, Numpad9: 329,
+  NumpadDecimal: 330,
+  NumpadDivide: 331,
+  NumpadMultiply: 332,
+  NumpadSubtract: 333,
+  NumpadAdd: 334,
+  NumpadEnter: 335,
 
-  // Modifiers
-  ControlLeft: 224, ShiftLeft: 225, AltLeft: 226, MetaLeft: 227,
-  ControlRight: 228, ShiftRight: 229, AltRight: 230, MetaRight: 231,
+  // Modifiers (GLFW left = 340-342, right = 344-346)
+  ShiftLeft: 340, ControlLeft: 341, AltLeft: 342,
+  ShiftRight: 344, ControlRight: 345, AltRight: 346,
 };
 
 // Scancode constants used by the virtual keyboard.
 export const SC = {
-  ESC: 41, BS: 42, TAB: 43, ENTER: 40, SPACE: 44,
-  SHIFT: 225, CTRL: 224, ALT: 226,
-  UP: 82, DOWN: 81, LEFT: 80, RIGHT: 79,
-  A: 4, B: 5, C: 6, D: 7, E: 8, F: 9, G: 10, H: 11, I: 12, J: 13,
-  K: 14, L: 15, M: 16, N: 17, O: 18, P: 19, Q: 20, R: 21, S: 22,
-  T: 23, U: 24, V: 25, W: 26, X: 27, Y: 28, Z: 29,
-  D0: 39, D1: 30, D2: 31, D3: 32, D4: 33, D5: 34, D6: 35, D7: 36, D8: 37, D9: 38,
-  MINUS: 45, EQUAL: 46,
-  LBRACKET: 47, RBRACKET: 48, BACKSLASH: 49,
-  SEMICOLON: 51, QUOTE: 52, COMMA: 54, PERIOD: 55, SLASH: 56,
-  F1: 58, F2: 59, F3: 60, F4: 61, F5: 62, F6: 63, F7: 64, F8: 65, F9: 66, F10: 67,
+  ESC: 256, BS: 259, TAB: 258, ENTER: 257, SPACE: 32,
+  SHIFT: 340, CTRL: 341, ALT: 342,
+  UP: 265, DOWN: 264, LEFT: 263, RIGHT: 262,
+  A: 65, B: 66, C: 67, D: 68, E: 69, F: 70, G: 71, H: 72, I: 73, J: 74,
+  K: 75, L: 76, M: 77, N: 78, O: 79, P: 80, Q: 81, R: 82, S: 83,
+  T: 84, U: 85, V: 86, W: 87, X: 88, Y: 89, Z: 90,
+  D0: 48, D1: 49, D2: 50, D3: 51, D4: 52, D5: 53, D6: 54, D7: 55, D8: 56, D9: 57,
+  MINUS: 45, EQUAL: 61,
+  LBRACKET: 91, RBRACKET: 93, BACKSLASH: 92,
+  SEMICOLON: 59, QUOTE: 39, COMMA: 44, PERIOD: 46, SLASH: 47,
+  F1: 290, F2: 291, F3: 292, F4: 293, F5: 294, F6: 295, F7: 296, F8: 297, F9: 298, F10: 299,
 } as const;
