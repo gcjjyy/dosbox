@@ -122,7 +122,11 @@ export class DosEmulator {
       if (w === 0 || h === 0) return;
       let buf: Uint8ClampedArray | null = null;
       if (rgba) {
-        buf = new Uint8ClampedArray(rgba.buffer as ArrayBuffer, rgba.byteOffset, rgba.byteLength);
+        // Defensive copy: the WASM bridge may reuse this buffer before
+        // putImageData fully consumes it. new Uint8ClampedArray(typedArray)
+        // allocates fresh storage. Side benefit: avoids the ArrayBufferLike
+        // generic cast we'd otherwise need on rgba.buffer.
+        buf = new Uint8ClampedArray(rgba);
       } else if (rgb) {
         const n = (rgb.length / 3) | 0;
         if (!this.rgbaScratch || this.rgbaScratch.length !== n * 4) {
@@ -219,7 +223,10 @@ export class DosEmulator {
       this.ci.sendMouseSync();
       return;
     }
-    // pointer button — 0=left, 2=right, 1=middle (DOS sees 0,1,2 for L,R,M)
+    // PointerEvent.button → DOSBox button index:
+    //   browser 0 (left)   → 0
+    //   browser 2 (right)  → 1
+    //   browser 1 (middle) → 2
     const button = e.button === 2 ? 1 : e.button === 1 ? 2 : 0;
     this.ci.sendMouseButton(button, kind === "down");
     this.ci.sendMouseSync();
