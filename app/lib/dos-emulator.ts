@@ -64,6 +64,9 @@ function shouldForward(e: KeyboardEvent): boolean {
 export interface DosEmulatorOpts {
   canvas: HTMLCanvasElement;
   bundle: Uint8Array;
+  /** Optional per-user save overlay. emulators layers later entries over earlier
+   *  ones, so files in this zip overwrite the matching paths from `bundle`. */
+  overlay?: Uint8Array | null;
   onReady?: (ci: CommandInterface) => void;
   onFirstFrame?: () => void;
   onError?: (err: unknown) => void;
@@ -111,7 +114,10 @@ export class DosEmulator {
     if (!emu) throw new Error("window.emulators not loaded");
     emu.pathPrefix = "/js-dos/emulators/";
     const onExtract = this.opts.onExtractProgress;
-    const ci = await emu.dosboxXDirect([this.opts.bundle], onExtract ? {
+    const initFs = this.opts.overlay
+      ? [this.opts.bundle, this.opts.overlay]
+      : [this.opts.bundle];
+    const ci = await emu.dosboxXDirect(initFs, onExtract ? {
       onExtractProgress: (_idx, _file, extracted, total) => {
         if (total > 0) onExtract(Math.min(1, extracted / total));
       },
