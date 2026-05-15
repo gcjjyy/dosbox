@@ -66,34 +66,56 @@ html { color-scheme: dark; }
 .boot-progress {
   display: flex;
   align-items: center;
-  gap: 14px;
-  width: 280px;
+  width: 320px;
 }
 .boot-progress__track {
   position: relative;
   flex: 1;
-  height: 2px;
-  background: var(--color-navy-line);
-  border-radius: 1px;
+  height: 22px;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      var(--color-navy-line) 0 8px,
+      color-mix(in srgb, var(--color-navy-line) 60%, transparent) 8px 16px
+    );
+  border: 1px solid color-mix(in srgb, var(--color-navy-line) 80%, transparent);
+  border-radius: 4px;
   overflow: hidden;
 }
 .boot-progress__fill {
   height: 100%;
-  background: var(--color-navy-accent);
+  background:
+    repeating-linear-gradient(
+      135deg,
+      var(--color-navy-accent) 0 8px,
+      color-mix(in srgb, var(--color-navy-accent) 70%, #0a0f1f) 8px 16px
+    );
+  background-size: 22.6px 22.6px;
+  animation: boot-progress-stripes 1.2s linear infinite;
   /* The bar drives real progress, so transitions only smooth callback jitter —
      keep them short so 0→100% in a warm cache still feels snappy. */
   transition: width 220ms cubic-bezier(0.2, 0, 0, 1);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--color-navy-accent) 60%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-navy-accent) 60%, transparent);
+}
+@keyframes boot-progress-stripes {
+  from { background-position: 0 0; }
+  to   { background-position: 22.6px 0; }
 }
 .boot-progress__pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  color: var(--color-navy-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--color-navy-text);
   font-variant-numeric: tabular-nums;
-  min-width: 3ch;
-  text-align: right;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  z-index: 1;
+  pointer-events: none;
 }
 
 /* ── Typography ──────────────────────────────────────────────────── */
@@ -214,6 +236,16 @@ html { color-scheme: dark; }
     radial-gradient(ellipse 80% 70% at 50% 50%, var(--color-navy-bg-lift) 0%, var(--color-navy-bg) 75%),
     var(--color-navy-bg);
   overflow: auto;
+  /* Chrome's Apple Silicon Metal compositor goes into a low-power frame-
+   * skip mode when GPU work is light, and the transitions in/out of that
+   * mode oscillate macOS WindowServer display state — visible as a
+   * fluorescent-light flicker across the whole desktop. Opening the
+   * virtual keyboard (which has its own backdrop-filter) empirically
+   * stops the flicker by keeping the compositor uniformly busy. We pin
+   * the same behavior here: dos-stage has an opaque background, so the
+   * blurred backdrop is invisible — GPU still does the per-frame work. */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 .dos-canvas { image-rendering: pixelated; display: block; }
 .dos-canvas--fill {
