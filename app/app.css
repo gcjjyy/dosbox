@@ -319,42 +319,91 @@ html { color-scheme: dark; }
   border-color: rgba(91, 141, 239, 0.4);
 }
 
-/* ── Virtual keyboard ─────────────────────────────────────────────── */
+/* ── Virtual keyboard (glass overlay) ─────────────────────────────── */
 
 .vkb {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 40;
+
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px;
-  background: var(--color-navy-bg);
-  border-top: 1px solid var(--color-navy-line);
+  gap: 5px;
+  padding: 10px;
+
+  background: rgba(10, 15, 31, 0.72);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+
+  border: 1px solid rgba(91, 141, 239, 0.18);
+  border-radius: 12px;
+  box-shadow:
+    0 12px 36px -8px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
   user-select: none;
   touch-action: manipulation;
+  animation: vkb-in 220ms cubic-bezier(0.2, 0, 0, 1) both;
 }
-.vkb-row { display: flex; gap: 4px; }
+@keyframes vkb-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.vkb-row { display: flex; gap: 5px; }
+
 .vkb-key {
   flex: 1 1 0;
   min-width: 0;
-  min-height: 34px;
-  padding: 4px 0;
-  border: 1px solid var(--color-navy-line);
-  border-radius: 4px;
-  background: var(--color-navy-bg-lift);
+  min-height: 36px;
+  padding: 6px 0;
+
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.03);
   color: var(--color-navy-text);
+
   font-family: var(--font-mono);
   font-size: 13px;
-  letter-spacing: 0.02em;
-  transition: background 80ms ease, border-color 80ms ease, color 80ms ease;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  transition:
+    background 90ms ease,
+    border-color 90ms ease,
+    color 90ms ease,
+    transform 70ms ease,
+    box-shadow 90ms ease;
   cursor: pointer;
 }
-.vkb-key:active { background: var(--color-navy-line); }
-.vkb-key--mod { color: var(--color-navy-muted); }
-.vkb-key--pressed {
+@media (hover: hover) {
+  .vkb-key:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+}
+.vkb-key--mod {
+  color: var(--color-navy-muted);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.vkb-key--pressed,
+.vkb-key:active {
   background: var(--color-navy-accent);
   border-color: var(--color-navy-accent);
   color: #050912;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 0 14px rgba(91, 141, 239, 0.32);
+  transform: scale(0.97);
 }
-.vkb-key--mod.vkb-key--pressed { color: #050912; }
+.vkb-key--mod.vkb-key--pressed,
+.vkb-key--mod:active { color: #050912; }
 
 /* ── Toolbar icon button ─────────────────────────────────────────── */
 

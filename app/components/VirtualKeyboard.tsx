@@ -21,7 +21,15 @@ interface KeyDef {
 }
 
 const ROWS: KeyDef[][] = [
-  // Row 1: digits + Backspace
+  // Row 1: Esc + F1..F10 (function row — physical keyboard order)
+  [
+    { code: SC.ESC, label: "Esc", flex: 1.4 },
+    { code: SC.F1, label: "F1" }, { code: SC.F2, label: "F2" }, { code: SC.F3, label: "F3" },
+    { code: SC.F4, label: "F4" }, { code: SC.F5, label: "F5" }, { code: SC.F6, label: "F6" },
+    { code: SC.F7, label: "F7" }, { code: SC.F8, label: "F8" }, { code: SC.F9, label: "F9" },
+    { code: SC.F10, label: "F10" },
+  ],
+  // Row 2: digits + Backspace
   [
     { code: SC.D1, label: "1" }, { code: SC.D2, label: "2" }, { code: SC.D3, label: "3" },
     { code: SC.D4, label: "4" }, { code: SC.D5, label: "5" }, { code: SC.D6, label: "6" },
@@ -29,7 +37,7 @@ const ROWS: KeyDef[][] = [
     { code: SC.D0, label: "0" }, { code: SC.MINUS, label: "-" }, { code: SC.EQUAL, label: "=" },
     { code: SC.BS, label: "⌫", flex: 2 },
   ],
-  // Row 2: Tab + Q..P + brackets + backslash
+  // Row 3: Tab + Q..P + brackets + backslash
   [
     { code: SC.TAB, label: "Tab", flex: 1.5 },
     { code: SC.Q, label: "Q" }, { code: SC.W, label: "W" }, { code: SC.E, label: "E" },
@@ -39,16 +47,15 @@ const ROWS: KeyDef[][] = [
     { code: SC.LBRACKET, label: "[" }, { code: SC.RBRACKET, label: "]" },
     { code: SC.BACKSLASH, label: "\\" },
   ],
-  // Row 3: Esc + A..L + ; ' Enter
+  // Row 4: A..L + ; ' Enter
   [
-    { code: SC.ESC, label: "Esc", flex: 1.75 },
     { code: SC.A, label: "A" }, { code: SC.S, label: "S" }, { code: SC.D, label: "D" },
     { code: SC.F, label: "F" }, { code: SC.G, label: "G" }, { code: SC.H, label: "H" },
     { code: SC.J, label: "J" }, { code: SC.K, label: "K" }, { code: SC.L, label: "L" },
     { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
     { code: SC.ENTER, label: "⏎", flex: 2.25 },
   ],
-  // Row 4: Shift + Z..M + , . / + UP
+  // Row 5: Shift + Z..M + , . / + UP
   [
     { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
     { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
@@ -57,20 +64,13 @@ const ROWS: KeyDef[][] = [
     { code: SC.COMMA, label: "," }, { code: SC.PERIOD, label: "." }, { code: SC.SLASH, label: "/" },
     { code: SC.UP, label: "↑", flex: 1.5 },
   ],
-  // Row 5: Ctrl Alt Space Alt + arrows
+  // Row 6: Ctrl Alt Space Alt + arrows
   [
     { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
     { code: SC.ALT, label: "Alt", flex: 1.25, modifier: true },
     { code: SC.SPACE, label: "Space", flex: 6 },
     { code: SC.ALT, label: "Alt", flex: 1.25, modifier: true },
     { code: SC.LEFT, label: "←" }, { code: SC.DOWN, label: "↓" }, { code: SC.RIGHT, label: "→" },
-  ],
-  // Row 6: F1..F10
-  [
-    { code: SC.F1, label: "F1" }, { code: SC.F2, label: "F2" }, { code: SC.F3, label: "F3" },
-    { code: SC.F4, label: "F4" }, { code: SC.F5, label: "F5" }, { code: SC.F6, label: "F6" },
-    { code: SC.F7, label: "F7" }, { code: SC.F8, label: "F8" }, { code: SC.F9, label: "F9" },
-    { code: SC.F10, label: "F10" },
   ],
 ];
 

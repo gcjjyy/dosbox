@@ -78,10 +78,8 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     window.location.reload();
   }, []);
 
-  const gridRows = vkbVisible ? "grid-rows-[auto_1fr_auto]" : "grid-rows-[auto_1fr]";
-
   return (
-    <div className={`grid h-dvh ${gridRows} text-gray-100`}>
+    <div className="grid h-dvh grid-rows-[auto_1fr] text-gray-100">
       <Toolbar
         isAdmin={loaderData.isAdmin}
         saving={saving}
