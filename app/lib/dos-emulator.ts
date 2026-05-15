@@ -190,6 +190,11 @@ export class DosEmulator {
   private pushAudio(samples: Float32Array): void {
     const audioCtx = this.audioCtx;
     if (!audioCtx) return;
+    // Drop samples while the context is suspended (autoplay policy holds it
+    // there until the first user gesture). Without this, the boot-time
+    // sound emitted during the first ~4–5 s gets queued at currentTime=0
+    // and then plays back as a long delayed burst after resume().
+    if (audioCtx.state !== "running") return;
     if (samples.length === 0) return;
     const buffer = audioCtx.createBuffer(1, samples.length, audioCtx.sampleRate);
     buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0);
