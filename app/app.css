@@ -323,9 +323,12 @@ html { color-scheme: dark; }
 
 .vkb {
   position: fixed;
-  left: 8px;
-  right: 8px;
   bottom: 8px;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: calc(100% - 16px);
+  max-width: 820px;     /* keeps letter keys ~1:1 on wide viewports */
   z-index: 40;
 
   display: flex;
@@ -353,11 +356,19 @@ html { color-scheme: dark; }
 }
 
 .vkb-row { display: flex; gap: 5px; }
+.vkb-spacer { flex: 1 1 0; min-width: 0; }
+/* Fixed-width arrow cluster so ↑ and ↓ share an x position across rows
+   regardless of how their main flex rows distribute. */
+.vkb-arrows-col {
+  flex: 0 0 156px;
+  display: flex;
+  gap: 5px;
+}
 
 .vkb-key {
   flex: 1 1 0;
   min-width: 0;
-  min-height: 36px;
+  min-height: 48px;     /* matches natural cell width at vkb max-width 820 — keeps letter keys ≈1:1 */
   padding: 6px 0;
 
   border: 1px solid rgba(255, 255, 255, 0.07);
