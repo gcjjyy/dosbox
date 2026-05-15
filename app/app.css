@@ -249,16 +249,6 @@ html { color-scheme: dark; }
     radial-gradient(ellipse 80% 70% at 50% 50%, var(--color-navy-bg-lift) 0%, var(--color-navy-bg) 75%),
     var(--color-navy-bg);
   overflow: auto;
-  /* Chrome's Apple Silicon Metal compositor goes into a low-power frame-
-   * skip mode when GPU work is light, and the transitions in/out of that
-   * mode oscillate macOS WindowServer display state — visible as a
-   * fluorescent-light flicker across the whole desktop. Opening the
-   * virtual keyboard (which has its own backdrop-filter) empirically
-   * stops the flicker by keeping the compositor uniformly busy. We pin
-   * the same behavior here: dos-stage has an opaque background, so the
-   * blurred backdrop is invisible — GPU still does the per-frame work. */
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 .dos-canvas { image-rendering: pixelated; display: block; }
 .dos-canvas--fill {
