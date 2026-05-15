@@ -318,3 +318,40 @@ html { color-scheme: dark; }
   color: var(--color-navy-accent);
   border-color: rgba(91, 141, 239, 0.4);
 }
+
+/* ── Virtual keyboard ─────────────────────────────────────────────── */
+
+.vkb {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--color-navy-bg);
+  border-top: 1px solid var(--color-navy-line);
+  user-select: none;
+  touch-action: manipulation;
+}
+.vkb-row { display: flex; gap: 4px; }
+.vkb-key {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 34px;
+  padding: 4px 0;
+  border: 1px solid var(--color-navy-line);
+  border-radius: 4px;
+  background: var(--color-navy-bg-lift);
+  color: var(--color-navy-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  transition: background 80ms ease, border-color 80ms ease, color 80ms ease;
+  cursor: pointer;
+}
+.vkb-key:active { background: var(--color-navy-line); }
+.vkb-key--mod { color: var(--color-navy-muted); }
+.vkb-key--pressed {
+  background: var(--color-navy-accent);
+  border-color: var(--color-navy-accent);
+  color: #050912;
+}
+.vkb-key--mod.vkb-key--pressed { color: #050912; }
