@@ -6,7 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "copy-jsdos": "rm -rf public/js-dos && mkdir -p public/js-dos && cp -r node_modules/js-dos/dist/* public/js-dos/",
+    "copy-jsdos": "rm -rf public/js-dos && mkdir -p public/js-dos/emulators && cp -r node_modules/js-dos/dist/emulators/* public/js-dos/emulators/",
     "build": "npm run copy-jsdos && react-router build",
     "dev": "npm run copy-jsdos && react-router dev",
     "start": "react-router-serve ./build/server/index.js",
