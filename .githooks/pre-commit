@@ -1,0 +1,31 @@
+#!/bin/sh
+# Bump package.json patch version on each commit.
+set -e
+
+gitdir=$(git rev-parse --git-dir)
+
+# Skip during rebase / merge / cherry-pick — those replay commits and would
+# multiply the bumps.
+if [ -d "$gitdir/rebase-merge" ] || [ -d "$gitdir/rebase-apply" ] \
+   || [ -f "$gitdir/CHERRY_PICK_HEAD" ] || [ -f "$gitdir/MERGE_HEAD" ]; then
+  exit 0
+fi
+
+# Skip if the commit already touches the version field manually.
+if git diff --cached --name-only | grep -qx package.json; then
+  if git diff --cached -U0 package.json | grep -qE '^\+[[:space:]]*"version"'; then
+    exit 0
+  fi
+fi
+
+new=$(node -e '
+const fs = require("fs");
+const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const [a, b, c] = p.version.split(".").map(Number);
+p.version = `${a}.${b}.${c + 1}`;
+fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+console.log(p.version);
+')
+
+git add package.json
+echo "[pre-commit] version → $new"

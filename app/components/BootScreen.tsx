@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { version } from "../../package.json";
 
 /**
  * Boot overlay shown until js-dos reports ci-ready.
@@ -43,7 +44,7 @@ export function BootScreen({ visible }: { visible: boolean }) {
 
       <div className="boot-footer">
         <span className="boot-footer__dot" />
-        <span>v8.3 · korean ms-dos preservation</span>
+        <span>v{version} · korean ms-dos preservation</span>
       </div>
     </div>
   );
