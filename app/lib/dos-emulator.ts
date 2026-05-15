@@ -61,6 +61,47 @@ function shouldForward(e: KeyboardEvent): boolean {
   return true;
 }
 
+// Passthrough shaders for a fullscreen textured quad. Y is flipped in the
+// vertex tex coords so row 0 of the uploaded image lands at the top of the
+// canvas (WebGL's clip-space y is up, image data row 0 is the top).
+const VS = `
+attribute vec2 aPos;
+attribute vec2 aTex;
+varying vec2 vTex;
+void main() {
+  gl_Position = vec4(aPos, 0.0, 1.0);
+  vTex = aTex;
+}`;
+const FS = `
+precision mediump float;
+varying vec2 vTex;
+uniform sampler2D uTex;
+void main() {
+  gl_FragColor = texture2D(uTex, vTex);
+}`;
+// 6 verts × (vec2 pos, vec2 tex). v inverted so v=0 maps to image row 0.
+const QUAD = new Float32Array([
+  -1, -1, 0, 1,
+   1, -1, 1, 1,
+  -1,  1, 0, 0,
+  -1,  1, 0, 0,
+   1, -1, 1, 1,
+   1,  1, 1, 0,
+]);
+
+function compileShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {
+  const sh = gl.createShader(type);
+  if (!sh) throw new Error("gl.createShader failed");
+  gl.shaderSource(sh, source);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(sh) ?? "";
+    gl.deleteShader(sh);
+    throw new Error("shader compile failed: " + log);
+  }
+  return sh;
+}
+
 export interface DosEmulatorOpts {
   canvas: HTMLCanvasElement;
   bundle: Uint8Array;
@@ -77,13 +118,23 @@ export interface DosEmulatorOpts {
 export class DosEmulator {
   private opts: DosEmulatorOpts;
   private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
+  private gl: WebGLRenderingContext;
+  private program: WebGLProgram | null = null;
+  private tex: WebGLTexture | null = null;
+  private quadBuf: WebGLBuffer | null = null;
   private ci: CommandInterface | null = null;
   private audioCtx: AudioContext | null = null;
   private nextAudioTime = 0;
   private firstFrame = false;
   private exiting = false;
-  private rgbaScratch: Uint8ClampedArray | null = null;
+  // Latest pixel buffer staged by onFrame; consumed by the next RAF tick.
+  // Decoupling emulator output rate from display vsync is what stops the
+  // Chrome/Mac compositor from thrashing the display state.
+  private pendingBuf: Uint8Array | null = null;
+  private pendingFmt = 0;
+  private texW = 0;
+  private texH = 0;
+  private rafId = 0;
 
   private readonly onKeyDown: (e: KeyboardEvent) => void;
   private readonly onKeyUp: (e: KeyboardEvent) => void;
@@ -95,10 +146,17 @@ export class DosEmulator {
   constructor(opts: DosEmulatorOpts) {
     this.opts = opts;
     this.canvas = opts.canvas;
-    const ctx = this.canvas.getContext("2d");
-    if (!ctx) throw new Error("2d canvas context unavailable");
-    this.ctx = ctx;
+    const gl = this.canvas.getContext("webgl", {
+      alpha: false,
+      antialias: false,
+      preserveDrawingBuffer: false,
+    });
+    if (!gl) throw new Error("webgl context unavailable");
+    this.gl = gl;
+    // Keep the CSS hint: when the canvas is upscaled by the compositor
+    // beyond its framebuffer, the browser will do a nearest-neighbor blit.
     this.canvas.style.imageRendering = "pixelated";
+    this.setupGL();
 
     this.onKeyDown = (e) => this.handleKey(e, true);
     this.onKeyUp = (e) => this.handleKey(e, false);
@@ -129,42 +187,27 @@ export class DosEmulator {
     this.ci = ci;
 
     const events = ci.events();
+    const gl = this.gl;
     events.onFrameSize((w, h) => {
       this.canvas.width = w;
       this.canvas.height = h;
-      this.rgbaScratch = null; // size changed → reallocate on next frame
+      this.texW = w;
+      this.texH = h;
+      gl.viewport(0, 0, w, h);
+      this.pendingBuf = null;
     });
     events.onFrame((rgb, rgba) => {
-      const w = this.canvas.width, h = this.canvas.height;
-      if (w === 0 || h === 0) return;
-      let buf: Uint8ClampedArray | null = null;
-      if (rgba) {
-        // Defensive copy: the WASM bridge may reuse this buffer before
-        // putImageData fully consumes it. new Uint8ClampedArray(typedArray)
-        // allocates fresh storage. Side benefit: avoids the ArrayBufferLike
-        // generic cast we'd otherwise need on rgba.buffer.
-        buf = new Uint8ClampedArray(rgba);
-      } else if (rgb) {
-        const n = (rgb.length / 3) | 0;
-        if (!this.rgbaScratch || this.rgbaScratch.length !== n * 4) {
-          this.rgbaScratch = new Uint8ClampedArray(n * 4);
-        }
-        const tmp = this.rgbaScratch;
-        for (let i = 0, j = 0; i < n; i++, j += 4) {
-          tmp[j]     = rgb[i * 3];
-          tmp[j + 1] = rgb[i * 3 + 1];
-          tmp[j + 2] = rgb[i * 3 + 2];
-          tmp[j + 3] = 0xff;
-        }
-        buf = tmp;
-      }
-      if (!buf) return;
-      const img = new ImageData(buf as unknown as Uint8ClampedArray<ArrayBuffer>, w, h);
-      this.ctx.putImageData(img, 0, 0);
-      if (!this.firstFrame) {
-        this.firstFrame = true;
-        this.opts.onFirstFrame?.();
-      }
+      const src = rgba ?? rgb;
+      if (!src) return;
+      // Defensive copy: the WASM bridge reuses this buffer between frames.
+      // Cheap allocation, prevents tearing if RAF fires after a new frame
+      // has overwritten the old contents.
+      this.pendingBuf = new Uint8Array(src);
+      this.pendingFmt = rgba ? gl.RGBA : gl.RGB;
+      // Coalesce: if a RAF is already scheduled, the latest buffer simply
+      // replaces the previous one — dropping intermediate frames keeps GPU
+      // work in lockstep with display vsync.
+      if (this.rafId === 0) this.rafId = requestAnimationFrame(this.renderFrame);
     });
 
     // ── Audio ─────────────────────────────────────────────────────
@@ -203,6 +246,68 @@ export class DosEmulator {
 
     this.opts.onReady?.(ci);
   }
+
+  private setupGL(): void {
+    const gl = this.gl;
+    const vs = compileShader(gl, gl.VERTEX_SHADER, VS);
+    const fs = compileShader(gl, gl.FRAGMENT_SHADER, FS);
+    const prog = gl.createProgram();
+    if (!prog) throw new Error("gl.createProgram failed");
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      const log = gl.getProgramInfoLog(prog) ?? "";
+      throw new Error("program link failed: " + log);
+    }
+    gl.useProgram(prog);
+    this.program = prog;
+
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, QUAD, gl.STATIC_DRAW);
+    this.quadBuf = buf;
+
+    const aPos = gl.getAttribLocation(prog, "aPos");
+    const aTex = gl.getAttribLocation(prog, "aTex");
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(aTex);
+    gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
+
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    // NEAREST keeps DOS pixels crisp; CSS image-rendering: pixelated handles
+    // any further upscale the compositor applies.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    // RGB rows for odd widths (e.g. 320*3=960 is %4 but 321*3=963 is not) —
+    // tell the GPU not to expect 4-byte row alignment.
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0]));
+    this.tex = tex;
+
+    const uTex = gl.getUniformLocation(prog, "uTex");
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(uTex, 0);
+    gl.clearColor(0, 0, 0, 1);
+  }
+
+  private readonly renderFrame = (): void => {
+    this.rafId = 0;
+    const gl = this.gl;
+    const buf = this.pendingBuf;
+    if (!buf || this.texW === 0 || this.texH === 0) return;
+    this.pendingBuf = null;
+    gl.texImage2D(gl.TEXTURE_2D, 0, this.pendingFmt, this.texW, this.texH, 0, this.pendingFmt, gl.UNSIGNED_BYTE, buf);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if (!this.firstFrame) {
+      this.firstFrame = true;
+      this.opts.onFirstFrame?.();
+    }
+  };
 
   private pushAudio(samples: Float32Array): void {
     const audioCtx = this.audioCtx;
@@ -263,6 +368,11 @@ export class DosEmulator {
 
   async destroy(): Promise<void> {
     this.exiting = true;
+    if (this.rafId !== 0) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = 0;
+    }
+    this.pendingBuf = null;
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
@@ -281,5 +391,9 @@ export class DosEmulator {
       try { await this.audioCtx.close(); } catch { /* ignore */ }
       this.audioCtx = null;
     }
+    const gl = this.gl;
+    if (this.tex) { gl.deleteTexture(this.tex); this.tex = null; }
+    if (this.quadBuf) { gl.deleteBuffer(this.quadBuf); this.quadBuf = null; }
+    if (this.program) { gl.deleteProgram(this.program); this.program = null; }
   }
 }
