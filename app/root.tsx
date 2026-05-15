@@ -35,7 +35,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
         <script src="/js-dos/js-dos.js" defer />
       </head>
-      <body className="h-screen w-screen overflow-hidden">
+      <body className="h-dvh w-screen overflow-hidden">
         {children}
         <ScrollRestoration />
         <Scripts />

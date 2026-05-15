@@ -26,12 +26,17 @@ export interface DosFrameProps {
   bundleUrl: string;
   onReady: (ci: CommandInterface) => void;
   onError?: (err: unknown) => void;
+  /** Display width in CSS px. null → fill available space. */
+  width?: number | null;
+  /** Display height in CSS px. null → fill available space. */
+  height?: number | null;
 }
 
-export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
+export function DosFrame({ bundleUrl, onReady, onError, width, height }: DosFrameProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [bootVisible, setBootVisible] = useState(true);
   const mountedAt = useRef<number>(0);
+  const fixedSize = width != null && height != null;
 
   useEffect(() => {
     mountedAt.current = Date.now();
@@ -119,8 +124,12 @@ export function DosFrame({ bundleUrl, onReady, onError }: DosFrameProps) {
   }, [bundleUrl, onReady, onError]);
 
   return (
-    <div className="relative size-full bg-black">
-      <div ref={ref} className="size-full" />
+    <div className="dos-stage">
+      <div
+        ref={ref}
+        className={fixedSize ? "dos-canvas dos-canvas--fixed" : "dos-canvas dos-canvas--fill"}
+        style={fixedSize ? { width: `${width}px`, height: `${height}px` } : undefined}
+      />
       <BootScreen visible={bootVisible} />
     </div>
   );

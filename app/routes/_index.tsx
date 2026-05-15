@@ -4,6 +4,8 @@ import { getSession } from "../lib/auth.server";
 import { DosFrame, type CommandInterface } from "../components/DosFrame";
 import { Toolbar } from "../components/Toolbar";
 import { LoginModal } from "../components/LoginModal";
+import { resolutionById } from "../components/ResolutionPicker";
+import { useResolution } from "../lib/use-resolution";
 import { saveToServer } from "../lib/save";
 
 export function meta(_: Route.MetaArgs) {
@@ -24,6 +26,8 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   // server-rendered <div> conflicting with js-dos's DOM mutations on mount.
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+  const [resolutionId, setResolutionId] = useResolution();
+  const resolution = resolutionById(resolutionId);
 
   const onReady = useCallback((ci: CommandInterface) => {
     ciRef.current = ci;
@@ -63,16 +67,25 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   }, []);
 
   return (
-    <div className="grid h-screen grid-rows-[auto_1fr] bg-black text-gray-100">
+    <div className="grid h-dvh grid-rows-[auto_1fr] text-gray-100">
       <Toolbar
         isAdmin={loaderData.isAdmin}
         saving={saving}
+        resolutionId={resolutionId}
+        onResolutionChange={setResolutionId}
         onLoginClick={() => setShowLogin(true)}
         onLogout={logout}
         onSave={checkAndSave}
       />
       <main className="relative">
-        {mounted && <DosFrame bundleUrl="/dos.jsdos" onReady={onReady} />}
+        {mounted && (
+          <DosFrame
+            bundleUrl="/dos.jsdos"
+            onReady={onReady}
+            width={resolution.width}
+            height={resolution.height}
+          />
+        )}
         {status && (
           <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-black/80 px-3 py-1 text-xs">
             {status}
