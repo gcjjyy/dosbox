@@ -355,3 +355,31 @@ html { color-scheme: dark; }
   color: #050912;
 }
 .vkb-key--mod.vkb-key--pressed { color: #050912; }
+
+/* ── Toolbar icon button ─────────────────────────────────────────── */
+
+.toolbar__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-navy-line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-navy-muted);
+  font-size: 14px;
+  line-height: 1;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  cursor: pointer;
+}
+.toolbar__icon:hover {
+  border-color: #2e3d70;
+  background: var(--color-navy-bg-lift);
+  color: var(--color-navy-text);
+}
+.toolbar__icon--active {
+  border-color: var(--color-navy-accent);
+  color: var(--color-navy-accent);
+  background: var(--color-navy-bg-lift);
+}
