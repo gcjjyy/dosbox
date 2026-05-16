@@ -10,9 +10,18 @@
 //
 // Architecture mirrors the upstream js-dos audio pipeline: a queue of mono
 // Float32Array chunks pushed from the main thread, drained at the audio-thread
-// rate inside process(). PRIME_THRESHOLD=2048 silences the first few process()
-// callbacks until enough samples are buffered. MAX_QUEUE_SAMPLES=6144 caps
-// producer overrun so worst-case AV lag stays around 140 ms @ 44.1 kHz.
+// rate inside process().
+//
+// Buffer sizing — picked to keep steady-state latency low. Once primed, the
+// queue oscillates around its initial length (consumer rate = producer rate
+// on average), so PRIME_THRESHOLD effectively *is* the baseline latency.
+//   PRIME_THRESHOLD = 512   →  ~10.7 ms @ 48 kHz baseline before audio starts
+//   MAX_QUEUE        = 2048 →  ~42.7 ms cap if producer briefly outpaces
+// We previously matched upstream js-dos's 2048/6144 (~42 / 128 ms) and that
+// turned out to be the dominant audible delay on desktop. js-dos can afford
+// 2048 because their AudioContext also uses a 2048-sample ScriptProcessor
+// quantum — our AudioWorklet runs at 128 samples per process() call (2.67 ms)
+// so a 512-sample cushion still leaves 4× headroom for postMessage jitter.
 
 class DosAudioProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -20,8 +29,8 @@ class DosAudioProcessor extends AudioWorkletProcessor {
     this._queue = [];
     this._queuedLength = 0;
     this._primed = false;
-    this._maxQueue = 6144;
-    this._primeThreshold = 2048;
+    this._maxQueue = 2048;
+    this._primeThreshold = 512;
 
     this.port.onmessage = (event) => {
       const data = event.data;
@@ -32,9 +41,10 @@ class DosAudioProcessor extends AudioWorkletProcessor {
         return;
       }
       if (!(data instanceof Float32Array) || data.length === 0) return;
-      // Drop new chunks once the queue is saturated. Matches js-dos's 6144
-      // backpressure cap. The producer (WASM Worker) will catch up when the
-      // audio thread drains us.
+      // Drop new chunks once the queue is saturated. The producer (WASM
+      // Worker) will catch up when the audio thread drains us. We deliberately
+      // keep this cap tight (~42 ms) so any startup burst can't push baseline
+      // latency above one frame's worth of audio.
       if (this._queuedLength >= this._maxQueue) return;
       this._queue.push(data);
       this._queuedLength += data.length;
