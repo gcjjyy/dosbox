@@ -103,6 +103,15 @@ function compileShader(gl: WebGLRenderingContext, type: number, source: string):
   return sh;
 }
 
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 export interface DosEmulatorOpts {
   canvas: HTMLCanvasElement;
   bundle: Uint8Array;
@@ -374,20 +383,28 @@ export class DosEmulator {
       // AudioWorklet output, so audio would play at the wrong speed. Worth
       // surfacing so we can spot it in the badge.
       this.audioCtx = new Ctor({ latencyHint: "interactive" });
-      status(`sampleRate ${sampleRate}Hz rejected; using ${this.audioCtx.sampleRate}Hz (audio may be off-pitch)`);
+      status(`sr ${sampleRate} rejected → ${this.audioCtx.sampleRate}`);
     }
+    status(`ctor state=${this.audioCtx.state}`);
     if (!this.audioCtx.audioWorklet) throw new Error("AudioWorklet unsupported");
 
-    // Wait for resume() and verify the context actually transitioned. iOS
-    // Safari sometimes ignores resume() if the call isn't synchronously inside
-    // the gesture — log that state so we can tell which failure we're in.
-    await this.audioCtx.resume();
-    if (this.audioCtx.state !== "running") {
-      status(`resume returned but state=${this.audioCtx.state}`);
-    }
+    // Each await yields a microtask. iOS Safari ties "user gesture context"
+    // to the whole task that contained the gesture handler, but a long await
+    // (network fetch / OS audio init) can drift past the task boundary on
+    // slow devices. Wrap every awaited promise in a timeout so a hang shows
+    // up in the badge instead of leaving us silent.
+    status("resume…");
+    await withTimeout(this.audioCtx.resume(), 4000, "resume");
+    status(`resumed state=${this.audioCtx.state}`);
 
-    await this.audioCtx.audioWorklet.addModule(WORKLET_URL);
+    status("addModule…");
+    await withTimeout(
+      this.audioCtx.audioWorklet.addModule(WORKLET_URL),
+      6000,
+      "addModule",
+    );
     if (this.exiting) return;
+    status("module ok");
 
     // outputChannelCount intentionally NOT specified — let the platform pick.
     // Some iOS Safari builds reject [1] mono explicitly; the worklet handles
@@ -401,11 +418,11 @@ export class DosEmulator {
       if (!msg || typeof msg !== "object") return;
       if (msg.type === "primed") status("primed");
       else if (msg.type === "tick") {
-        status(`playing ${this.audioCtx?.sampleRate ?? "?"}Hz · q=${msg.queued} · rx=${msg.totalReceived}`);
+        status(`play ${this.audioCtx?.sampleRate ?? "?"}Hz q=${msg.queued} rx=${msg.totalReceived}`);
       }
     };
     this.audioNode.connect(this.audioCtx.destination);
-    status(`running ${this.audioCtx.sampleRate}Hz`);
+    status(`running ${this.audioCtx.sampleRate}Hz state=${this.audioCtx.state}`);
   }
 
   private handleKey(e: KeyboardEvent, pressed: boolean): void {
