@@ -416,7 +416,6 @@ html { color-scheme: dark; }
 .vkb-tabbar {
   display: flex;
   gap: 5px;
-  margin-bottom: 5px;
 }
 .vkb-tab {
   flex: 1 1 0;
@@ -443,6 +442,10 @@ html { color-scheme: dark; }
 .vkb-tab--spacer {
   flex-grow: 6;
   visibility: hidden;
+  cursor: default;
+  border: none;
+  background: none;
+  padding: 0;
 }
 
 /* Mobile page content (between tab bar and util row) */
