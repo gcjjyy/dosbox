@@ -194,47 +194,38 @@ html { color-scheme: dark; }
   z-index: 50;
 }
 .toolbar__brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.18em;
-  color: var(--color-navy-muted);
-  text-transform: lowercase;
+  margin: 0;
+  user-select: none;
+}
+.toolbar__brand-name {
+  letter-spacing: 0.26em;
+  color: var(--color-navy-text);
+}
+.toolbar__brand-cursor {
+  color: var(--color-navy-accent);
+  margin-left: 1px;
+  animation: brand-blink 1.08s steps(1, end) infinite;
+}
+@keyframes brand-blink {
+  0%, 50%        { opacity: 1; }
+  50.01%, 100%   { opacity: 0; }
 }
 .toolbar__right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .toolbar__sep {
   width: 1px;
   height: 14px;
   background: var(--color-navy-line);
-  margin: 0 2px;
-}
-.toolbar__save {
-  background: var(--color-navy-accent);
-  color: #050912;
-  font-weight: 500;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  padding: 5px 12px;
-  border-radius: 4px;
-  transition: background 120ms ease, opacity 120ms ease;
-}
-.toolbar__save:hover:not(:disabled) { background: #7aa3f5; }
-.toolbar__save:disabled { opacity: 0.4; cursor: default; }
-.toolbar__ghost {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: var(--color-navy-muted);
-  padding: 5px 8px;
-  border-radius: 4px;
-  transition: color 120ms ease, background 120ms ease;
-}
-.toolbar__ghost:hover {
-  color: var(--color-navy-text);
-  background: var(--color-navy-bg-lift);
+  margin: 0;
 }
 
 /* ── DOS stage ───────────────────────────────────────────────────── */
@@ -292,6 +283,11 @@ html { color-scheme: dark; }
   background: var(--color-navy-bg-lift);
 }
 .res-picker__value { line-height: 1; }
+.res-picker__value--tag {
+  display: none;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+}
 .res-picker__chev {
   color: var(--color-navy-muted);
   transition: transform 160ms cubic-bezier(0.2, 0, 0, 1), color 120ms ease;
@@ -530,18 +526,74 @@ html { color-scheme: dark; }
   border-radius: 4px;
   background: transparent;
   color: var(--color-navy-muted);
-  font-size: 14px;
   line-height: 1;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, opacity 120ms ease;
   cursor: pointer;
+  flex-shrink: 0;
 }
-.toolbar__icon:hover {
+.toolbar__icon:hover:not(:disabled) {
   border-color: #2e3d70;
   background: var(--color-navy-bg-lift);
   color: var(--color-navy-text);
+}
+.toolbar__icon:focus-visible {
+  outline: none;
+  border-color: var(--color-navy-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-navy-accent) 55%, transparent);
 }
 .toolbar__icon--active {
   border-color: var(--color-navy-accent);
   color: var(--color-navy-accent);
   background: var(--color-navy-bg-lift);
+}
+.toolbar__icon--primary {
+  background: var(--color-navy-accent);
+  border-color: var(--color-navy-accent);
+  color: #050912;
+}
+.toolbar__icon--primary:hover:not(:disabled) {
+  background: #7aa3f5;
+  border-color: #7aa3f5;
+  color: #050912;
+}
+.toolbar__icon:disabled:not([data-loading="true"]) {
+  opacity: 0.4;
+  cursor: default;
+}
+.toolbar__icon[data-loading="true"] {
+  cursor: wait;
+}
+
+/* Spinner shown in place of the icon while a save is in flight. */
+.toolbar__spinner {
+  animation: toolbar-spin 0.9s linear infinite;
+  transform-origin: 8px 8px;
+}
+@keyframes toolbar-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Toolbar mobile (≤640px) ─────────────────────────────────────── */
+/* The toolbar holds 6+ controls; on narrow screens we tighten the
+   chrome, drop the resolution picker label down to its 3-letter tag,
+   and shave the brand letter-spacing so nothing wraps or overflows. */
+@media (max-width: 640px) {
+  .toolbar {
+    padding: 0 10px;
+  }
+  .toolbar__right { gap: 6px; }
+  .toolbar__sep { display: none; }
+  .toolbar__brand-name {
+    letter-spacing: 0.16em;
+    font-size: 11.5px;
+  }
+  .toolbar__brand-cursor { font-size: 11.5px; }
+
+  .res-picker__trigger {
+    padding: 0 8px;
+    gap: 6px;
+    font-variant-numeric: normal;
+  }
+  .res-picker__value--full { display: none; }
+  .res-picker__value--tag { display: inline; }
 }

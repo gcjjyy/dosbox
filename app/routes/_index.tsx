@@ -13,7 +13,7 @@ import { clearUserState, writeUserState } from "../lib/user-state";
 import { saveToServer } from "../lib/save";
 
 export function meta(_: Route.MetaArgs) {
-  return [{ title: "dosbox.gcjjyy.dev" }];
+  return [{ title: "DosBox" }];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

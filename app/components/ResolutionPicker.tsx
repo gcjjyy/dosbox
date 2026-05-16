@@ -5,16 +5,17 @@ export type ResolutionId = "640x480" | "800x600" | "1024x768" | "1280x960" | "fu
 export interface Resolution {
   id: ResolutionId;
   label: string;
+  tag: string;
   width: number | null;
   height: number | null;
 }
 
 export const RESOLUTIONS: readonly Resolution[] = [
-  { id: "640x480", label: "640 × 480", width: 640, height: 480 },
-  { id: "800x600", label: "800 × 600", width: 800, height: 600 },
-  { id: "1024x768", label: "1024 × 768", width: 1024, height: 768 },
-  { id: "1280x960", label: "1280 × 960", width: 1280, height: 960 },
-  { id: "fullscreen", label: "전체화면", width: null, height: null },
+  { id: "640x480", label: "640 × 480", tag: "VGA", width: 640, height: 480 },
+  { id: "800x600", label: "800 × 600", tag: "SVGA", width: 800, height: 600 },
+  { id: "1024x768", label: "1024 × 768", tag: "XGA", width: 1024, height: 768 },
+  { id: "1280x960", label: "1280 × 960", tag: "HD", width: 1280, height: 960 },
+  { id: "fullscreen", label: "전체화면", tag: "FIT", width: null, height: null },
 ];
 
 export const DEFAULT_RESOLUTION: ResolutionId = "640x480";
@@ -76,9 +77,13 @@ export function ResolutionPicker({ value, onChange }: ResolutionPickerProps) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
+        aria-label={`해상도: ${current.label}`}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="res-picker__value">{current.label}</span>
+        <span className="res-picker__value res-picker__value--full">{current.label}</span>
+        <span className="res-picker__value res-picker__value--tag" aria-hidden="true">
+          {current.tag}
+        </span>
         <svg
           className={`res-picker__chev ${open ? "res-picker__chev--up" : ""}`}
           width="8"
@@ -113,13 +118,7 @@ export function ResolutionPicker({ value, onChange }: ResolutionPickerProps) {
               >
                 <span className="res-picker__bar" aria-hidden="true" />
                 <span className="res-picker__opt-label">{r.label}</span>
-                <span className="res-picker__opt-tag">
-                  {r.id === "640x480" ? "VGA"
-                    : r.id === "800x600" ? "SVGA"
-                    : r.id === "1024x768" ? "XGA"
-                    : r.id === "1280x960" ? "HD"
-                    : "FIT"}
-                </span>
+                <span className="res-picker__opt-tag">{r.tag}</span>
               </li>
             );
           })}
