@@ -173,6 +173,12 @@ export class DosEmulator {
   private ci: CommandInterface | null = null;
   private audioCtx: AudioContext | null = null;
   private audioNode: AudioWorkletNode | null = null;
+  // Ratio for linear-interpolation resampling in pushAudio. iOS Safari
+  // silently coerces our requested 22050 Hz context to the device native
+  // rate (48000/44100), so we let it pick the rate and resample DOS samples
+  // (sourceRate) into the context's rate (ctx.sampleRate) on the main thread
+  // before posting to the worklet.
+  private resampleRatio = 1;
   private firstFrame = false;
   private exiting = false;
   // Latest pixel buffer staged by onFrame; consumed by the next RAF tick.
@@ -388,15 +394,35 @@ export class DosEmulator {
   private pushAudio(samples: Float32Array): void {
     const node = this.audioNode;
     if (!node || samples.length === 0) return;
-    // Defensive copy: the WASM bridge reuses this buffer between callbacks.
-    // Transfer the copy's ArrayBuffer to the audio thread so the post is
-    // zero-copy. Backpressure (queue cap, prime delay before suspended
-    // context resumes, underrun handling) all lives in the worklet.
-    const copy = new Float32Array(samples);
-    node.port.postMessage(copy, [copy.buffer]);
+    // Defensive copy regardless (WASM reuses its buffer). When the context
+    // sample rate matches the DOS source rate, send as-is; otherwise linearly
+    // interpolate to the context rate on this thread. The worklet just plays
+    // whatever it receives at its native rate — no rate handling inside the
+    // worklet keeps it simple. Per-chunk resampling has tiny phase
+    // discontinuities at chunk boundaries but they're inaudible for DOS
+    // audio (no continuous tonal content sensitive to phase jitter).
+    const ratio = this.resampleRatio;
+    let toSend: Float32Array;
+    if (Math.abs(ratio - 1) < 0.001) {
+      toSend = new Float32Array(samples);
+    } else {
+      const outLen = Math.max(1, Math.round(samples.length * ratio));
+      toSend = new Float32Array(outLen);
+      const invRatio = samples.length / outLen;
+      const lastIdx = samples.length - 1;
+      for (let i = 0; i < outLen; i++) {
+        const srcPos = i * invRatio;
+        const idx = Math.floor(srcPos);
+        const frac = srcPos - idx;
+        const a = idx <= lastIdx ? samples[idx] : 0;
+        const b = idx + 1 <= lastIdx ? samples[idx + 1] : a;
+        toSend[i] = a + (b - a) * frac;
+      }
+    }
+    node.port.postMessage(toSend, [toSend.buffer]);
   }
 
-  private async setupAudio(sampleRate: number, status: (s: string) => void): Promise<void> {
+  private async setupAudio(sourceRate: number, status: (s: string) => void): Promise<void> {
     if (this.audioCtx || this.exiting) return;
     status("init");
 
@@ -408,52 +434,32 @@ export class DosEmulator {
         : (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) throw new Error("AudioContext unavailable");
 
-    try {
-      this.audioCtx = new Ctor({ sampleRate, latencyHint: "interactive" });
-    } catch {
-      // Some browsers reject specific sampleRate values; default rate is
-      // resampled by AudioContext for AudioBuffer playback but NOT for
-      // AudioWorklet output, so audio would play at the wrong speed. Worth
-      // surfacing so we can spot it in the badge.
-      this.audioCtx = new Ctor({ latencyHint: "interactive" });
-      status(`sr ${sampleRate} rejected → ${this.audioCtx.sampleRate}`);
-    }
-    status(`ctor state=${this.audioCtx.state}`);
+    // Bare AudioContext (no sampleRate, no latencyHint). v1.0.19 requested
+    // sampleRate=22050 and got coerced to 48000 by iOS, after which the
+    // context state stayed "suspended" forever despite resume() + silent
+    // buffer + 2.5 s wait. Hypothesis: iOS leaves a coerced/option-laden
+    // context in a degraded unlock state. Letting the platform pick the
+    // rate avoids that surface entirely. We resample DOS samples →
+    // ctx.sampleRate inside pushAudio (linear interpolation).
+    this.audioCtx = new Ctor();
+    this.resampleRatio = this.audioCtx.sampleRate / sourceRate;
+    status(`ctor src=${sourceRate} ctx=${this.audioCtx.sampleRate} state=${this.audioCtx.state}`);
     if (!this.audioCtx.audioWorklet || typeof this.audioCtx.audioWorklet.addModule !== "function") {
       throw new Error("AudioWorklet API missing");
     }
 
-    // ── iOS unlock dance ──────────────────────────────────────────
-    // Last test showed `failed: resume timeout 4000ms` on mobile — the
-    // resume() promise never resolves on iOS Safari in some configurations,
-    // even from inside a gesture-rooted async function. Two countermeasures
-    // that combined are known to defeat this:
-    //
-    //   1. Synchronously create + start a 1-frame silent BufferSource. This
-    //      forces the audio output device to engage. Without this, iOS leaves
-    //      the audio HW idle and resume() has nothing to wait for.
-    //   2. Don't await resume(). Kick it off, then watch ctx.state directly.
-    //      iOS has been observed to transition state to "running" while never
-    //      resolving the resume() Promise (Webkit bug). Polling state is the
-    //      authoritative signal.
-    try {
-      const silent = this.audioCtx.createBuffer(1, 1, this.audioCtx.sampleRate);
-      const src = this.audioCtx.createBufferSource();
-      src.buffer = silent;
-      src.connect(this.audioCtx.destination);
-      src.start(0);
-    } catch (e) {
-      status(`unlock-buf err: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    // Kick resume() inside the gesture's task (no await — see below).
+    // Don't await resume(): WebKit has been observed to return a Promise
+    // that never resolves even when ctx.state actually does transition to
+    // "running". Polling state via waitForRunning is the authoritative path.
     void this.audioCtx.resume().catch((err) => {
-      status(`resume err: ${err instanceof Error ? err.message : String(err)}`);
+      status(`resume1 err: ${err instanceof Error ? err.message : String(err)}`);
     });
-    status("resume kicked");
+    status("kick1");
 
-    // Watch ctx.state for "running" with a 2.5 s budget; if it never gets
-    // there, proceed anyway and surface the lingering state so the badge
-    // shows it (we may still get audio if state flips later).
-    await waitForRunning(this.audioCtx, 2500, status);
+    // Watch for state="running" with a 2 s budget; continue anyway on
+    // timeout so we can see the lingering state in the badge.
+    await waitForRunning(this.audioCtx, 2000, status);
     status(`pre-module state=${this.audioCtx.state}`);
 
     status("addModule…");
@@ -481,7 +487,15 @@ export class DosEmulator {
       }
     };
     this.audioNode.connect(this.audioCtx.destination);
-    status(`running ${this.audioCtx.sampleRate}Hz state=${this.audioCtx.state}`);
+    status(`connected state=${this.audioCtx.state}`);
+
+    // Re-kick resume after the audio graph is fully wired. iOS sometimes
+    // wants the destination to be a non-empty graph before it'll commit.
+    void this.audioCtx.resume().catch((err) => {
+      status(`resume2 err: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    await waitForRunning(this.audioCtx, 1500, status);
+    status(`final ctx=${this.audioCtx.sampleRate}Hz state=${this.audioCtx.state} ratio=${this.resampleRatio.toFixed(2)}`);
   }
 
   private handleKey(e: KeyboardEvent, pressed: boolean): void {
