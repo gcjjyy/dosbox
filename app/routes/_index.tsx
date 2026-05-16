@@ -28,7 +28,11 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const [saving, setSaving] = useState(false);
   const [savingUserState, setSavingUserState] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [audioStatus, setAudioStatus] = useState<string | null>(null);
+  // Persistent scrolling log of audio init messages — single-line badge was
+  // overwritten too fast to read intermediate stages on mobile. Last 15
+  // entries with a relative-ms timestamp.
+  const [audioStatusLog, setAudioStatusLog] = useState<string[]>([]);
+  const audioStartRef = useRef<number | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   const [resolutionId, setResolutionId] = useResolution();
@@ -45,7 +49,13 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   }, []);
 
   const onAudioStatus = useCallback((text: string) => {
-    setAudioStatus(text);
+    if (audioStartRef.current === null) audioStartRef.current = Date.now();
+    const ms = Date.now() - audioStartRef.current;
+    const entry = `+${String(ms).padStart(5, " ")}ms ${text}`;
+    setAudioStatusLog((prev) => {
+      const next = prev.length >= 15 ? [...prev.slice(prev.length - 14), entry] : [...prev, entry];
+      return next;
+    });
   }, []);
 
   const onVkbKeyDown = useCallback((code: number) => {
@@ -157,9 +167,11 @@ export default function Index({ loaderData }: Route.ComponentProps) {
             {status}
           </div>
         )}
-        {audioStatus && (
-          <div className="pointer-events-none absolute right-2 top-2 max-w-[70vw] truncate rounded bg-black/70 px-2 py-0.5 text-[10px] font-mono text-amber-300">
-            🔊 {audioStatus}
+        {audioStatusLog.length > 0 && (
+          <div className="pointer-events-none absolute right-2 top-2 max-w-[90vw] rounded bg-black/85 px-2 py-1 text-[11px] font-mono leading-tight text-amber-300">
+            {audioStatusLog.map((line, i) => (
+              <div key={`${i}-${line}`} className="truncate">🔊 {line}</div>
+            ))}
           </div>
         )}
       </main>
