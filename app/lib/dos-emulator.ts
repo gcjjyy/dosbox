@@ -434,16 +434,23 @@ export class DosEmulator {
         : (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) throw new Error("AudioContext unavailable");
 
-    // Bare AudioContext (no sampleRate, no latencyHint). v1.0.19 requested
-    // sampleRate=22050 and got coerced to 48000 by iOS, after which the
-    // context state stayed "suspended" forever despite resume() + silent
-    // buffer + 2.5 s wait. Hypothesis: iOS leaves a coerced/option-laden
-    // context in a degraded unlock state. Letting the platform pick the
-    // rate avoids that surface entirely. We resample DOS samples →
-    // ctx.sampleRate inside pushAudio (linear interpolation).
-    this.audioCtx = new Ctor();
+    // Match upstream js-dos: request the DOS mixer rate from AudioContext.
+    // On desktop and on browsers that honor the request, ctx.sampleRate ===
+    // sourceRate and the resample fast-path in pushAudio is a no-op (ratio=1).
+    //
+    // v1.0.19 added latencyHint:"interactive" alongside the sampleRate option
+    // and that combination broke iOS unlock (state stuck "suspended" forever).
+    // v1.0.20 dropped both options and worked. Narrow it back down: just the
+    // sampleRate, no latencyHint. Whatever iOS does with it (honor / coerce /
+    // throw), the dynamic resampleRatio below handles it gracefully.
+    try {
+      this.audioCtx = new Ctor({ sampleRate: sourceRate });
+    } catch (err) {
+      status(`sr opt rejected (${err instanceof Error ? err.message : String(err)}); bare ctx`);
+      this.audioCtx = new Ctor();
+    }
     this.resampleRatio = this.audioCtx.sampleRate / sourceRate;
-    status(`ctor src=${sourceRate} ctx=${this.audioCtx.sampleRate} state=${this.audioCtx.state}`);
+    status(`ctor src=${sourceRate} ctx=${this.audioCtx.sampleRate} ratio=${this.resampleRatio.toFixed(3)} state=${this.audioCtx.state}`);
     if (!this.audioCtx.audioWorklet || typeof this.audioCtx.audioWorklet.addModule !== "function") {
       throw new Error("AudioWorklet API missing");
     }
