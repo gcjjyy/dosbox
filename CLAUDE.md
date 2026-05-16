@@ -100,10 +100,9 @@ Browser ─HTTPS─► nginx (443) ─proxy_pass─► RR v7 server (127.0.0.1:5
 
 ## Git hooks
 
-`.githooks/pre-commit` auto-bumps `package.json`'s patch version on every commit (skips during rebase / merge / cherry-pick, and skips when the commit already touches the `version` field). Enable once with:
+`core.hooksPath` is wired to `.githooks` at the **repo-local** level (`git config --local core.hooksPath .githooks`), which overrides whatever global hooksPath the developer has set. The two installed hooks:
 
-```bash
-git config core.hooksPath .githooks
-```
+- `.githooks/pre-commit` auto-bumps `package.json`'s patch version on every commit (skips during rebase / merge / cherry-pick, and skips when the commit already touches the `version` field). **Do not bump the patch version manually** — the hook will detect your manual bump and skip its own.
+- `.githooks/post-commit` is a shim that re-invokes `~/.claude/git-hooks/post-commit` (the QuickBASIC 4.5 auto-logger) when present. The local hooksPath would otherwise hide it.
 
-Don't manually bump the patch version in the same commit as feature work — the hook will skip and you'll lose the auto-increment.
+If you cloned fresh and the hooks aren't firing, re-run `git config --local core.hooksPath .githooks` once.
