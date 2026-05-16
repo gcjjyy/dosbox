@@ -13,3 +13,6 @@
 # Playwright MCP scratch (snapshots, console logs)
 /.playwright-mcp/
 *.png
+
+# Superpowers brainstorming visual companion mockups
+/.superpowers/
