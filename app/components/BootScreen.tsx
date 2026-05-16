@@ -43,14 +43,17 @@ export function BootScreen({
         </div>
 
         <div className="boot-text">
-          <p className="boot-wordmark">dosbox.gcjjyy.dev</p>
+          <p className="boot-wordmark">
+            <span className="boot-wordmark__name">DOSBOX</span>
+            <span className="boot-wordmark__cursor" aria-hidden="true">_</span>
+          </p>
           <p className="boot-status" key={phase}>{PHASE_LABEL[phase]}</p>
         </div>
       </div>
 
       <div className="boot-footer">
         <span className="boot-footer__dot" />
-        <span>v{version} · korean ms-dos preservation</span>
+        <span>v{version}</span>
       </div>
     </div>
   );

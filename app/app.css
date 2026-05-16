@@ -134,12 +134,24 @@ html { color-scheme: dark; }
 /* ── Typography ──────────────────────────────────────────────────── */
 
 .boot-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  user-select: none;
+}
+.boot-wordmark__name {
   font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.18em;
   color: var(--color-navy-text);
-  text-transform: lowercase;
+}
+.boot-wordmark__cursor {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-navy-accent);
+  animation: brand-blink 1.08s steps(1, end) infinite;
 }
 .boot-status {
   font-family: var(--font-sans);
