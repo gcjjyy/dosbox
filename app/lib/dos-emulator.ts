@@ -6,7 +6,7 @@
 // sendKeyDown/Up. No React, no js-dos UI.
 
 import { keymap } from "./dos-keymap";
-import { PROCESSOR_NAME, createWorkletModuleUrl } from "./dos-audio-worklet";
+import { PROCESSOR_NAME, WORKLET_URL } from "./dos-audio-worklet";
 
 export interface CommandInterface {
   exit: () => Promise<void>;
@@ -114,6 +114,11 @@ export interface DosEmulatorOpts {
   onError?: (err: unknown) => void;
   /** Fraction in [0,1] of bundle extraction progress reported by the WASM bridge. */
   onExtractProgress?: (fraction: number) => void;
+  /** Surfaces the audio init lifecycle for the UI's diagnostic badge.
+   *  Sequence on a healthy boot:
+   *    "wait gesture" → "init" → "running 22050Hz" → "primed" → "playing"
+   *  Anything else is a failure mode worth reporting. */
+  onAudioStatus?: (text: string) => void;
 }
 
 export class DosEmulator {
@@ -212,81 +217,56 @@ export class DosEmulator {
     });
 
     // ── Audio ─────────────────────────────────────────────────────
-    // Pull-based pipeline: AudioWorkletNode owns a ring buffer on the audio
-    // thread; main thread just posts Float32Array chunks via the node's port.
-    // This replaces the old per-chunk createBufferSource + future-schedule
-    // pattern, which was dropping nearly all chunks on mobile because the
-    // 10ms MAX_LEAD cap couldn't survive Worker→main-thread postMessage
-    // jitter. Matches the upstream js-dos pipeline (ring buffer + onaudio
-    // process) but uses the modern AudioWorklet API.
+    // Pull-based pipeline using AudioWorklet (replacement for the old
+    // per-chunk createBufferSource scheduler that was dropping ~all chunks on
+    // mobile because a 10 ms MAX_LEAD cap couldn't survive Worker→main-thread
+    // postMessage jitter). Pattern mirrors upstream js-dos's ring-buffer +
+    // ScriptProcessorNode, but with the modern (non-deprecated) Worklet API.
+    //
+    // Setup is deferred to first user gesture: iOS Safari has well-known
+    // failure modes where an AudioContext created outside a gesture stays
+    // silent even after resume(). Doing the creation + addModule + node
+    // wiring synchronously inside the gesture callback is the well-trodden
+    // path. Desktop Chrome doesn't care; mobile Safari does.
+    //
+    // events.onSoundPush is registered immediately (sampleRate>0), so
+    // pre-gesture chunks reach pushAudio. They no-op (audioNode is null) —
+    // same effective behavior as the old "drop while suspended" path.
     const sampleRate = ci.soundFrequency();
-    if (sampleRate > 0) {
-      // latencyHint: 'interactive' matches js-dos and gives the platform
-      // permission to pick a small device buffer. Safari (<14.5) historically
-      // exposed AudioContext as webkitAudioContext only — fall back if needed
-      // even though current iOS Safari supports the standard name.
-      const Ctor: typeof AudioContext | undefined =
-        typeof AudioContext !== "undefined"
-          ? AudioContext
-          : (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (Ctor) {
+    const audioStatus = (s: string) => {
+      console.info("[dos-audio]", s);
+      this.opts.onAudioStatus?.(s);
+    };
+    if (sampleRate === 0) {
+      audioStatus("disabled (sampleRate=0)");
+    } else {
+      events.onSoundPush((samples) => this.pushAudio(samples));
+      audioStatus("wait gesture");
+
+      // First gesture wins. Each handler removes the other.
+      const setupOnce = async (): Promise<void> => {
+        if (this.gestureUnlock) {
+          window.removeEventListener("pointerdown", this.gestureUnlock, true);
+          window.removeEventListener("keydown", this.gestureUnlock, true);
+          this.gestureUnlock = null;
+        }
         try {
-          try {
-            this.audioCtx = new Ctor({ sampleRate, latencyHint: "interactive" });
-          } catch {
-            // Some browsers reject specific sampleRate values; fall back to default.
-            this.audioCtx = new Ctor({ latencyHint: "interactive" });
-          }
-
-          // AudioWorklet was shipped everywhere by Safari 14.5 (2021). If a
-          // visitor's browser is older, fall through to no-audio rather than
-          // crash the boot — they still get a playable but silent emulator.
-          if (!this.audioCtx.audioWorklet) {
-            throw new Error("AudioWorklet unsupported");
-          }
-
-          const unlock = () => {
-            this.audioCtx?.resume().catch(() => undefined);
-            if (this.gestureUnlock) {
-              window.removeEventListener("pointerdown", this.gestureUnlock, true);
-              window.removeEventListener("keydown", this.gestureUnlock, true);
-              this.gestureUnlock = null;
-            }
-          };
-          this.gestureUnlock = unlock;
-          window.addEventListener("pointerdown", unlock, true);
-          window.addEventListener("keydown", unlock, true);
-
-          // Load the processor module via Blob URL — no static asset, no build
-          // plugin. Revoke the URL once addModule resolves; the worklet code is
-          // already parsed and registered by then.
-          const moduleUrl = createWorkletModuleUrl();
-          try {
-            await this.audioCtx.audioWorklet.addModule(moduleUrl);
-          } finally {
-            URL.revokeObjectURL(moduleUrl);
-          }
-          if (this.exiting) return;
-
-          this.audioNode = new AudioWorkletNode(this.audioCtx, PROCESSOR_NAME, {
-            numberOfInputs: 0,
-            numberOfOutputs: 1,
-            outputChannelCount: [1],
-          });
-          this.audioNode.connect(this.audioCtx.destination);
-
-          events.onSoundPush((samples) => this.pushAudio(samples));
+          await this.setupAudio(sampleRate, audioStatus);
         } catch (err) {
-          // Audio init failure must never break the emulator — video + input
-          // are independent. Log and continue silently.
-          console.warn("[dos-emulator] audio init failed; running without sound:", err);
+          // Audio failure must never break video/input. Log + report.
+          console.warn("[dos-emulator] audio init failed:", err);
+          audioStatus(`failed: ${err instanceof Error ? err.message : String(err)}`);
           if (this.audioCtx) {
             try { await this.audioCtx.close(); } catch { /* ignore */ }
             this.audioCtx = null;
           }
           this.audioNode = null;
         }
-      }
+      };
+      const unlock = () => { void setupOnce(); };
+      this.gestureUnlock = unlock;
+      window.addEventListener("pointerdown", unlock, true);
+      window.addEventListener("keydown", unlock, true);
     }
 
     // ── Listeners ─────────────────────────────────────────────────
@@ -372,6 +352,60 @@ export class DosEmulator {
     // context resumes, underrun handling) all lives in the worklet.
     const copy = new Float32Array(samples);
     node.port.postMessage(copy, [copy.buffer]);
+  }
+
+  private async setupAudio(sampleRate: number, status: (s: string) => void): Promise<void> {
+    if (this.audioCtx || this.exiting) return;
+    status("init");
+
+    // Safari (<14.5) only exposed webkitAudioContext. Current iOS Safari has
+    // both names, but keep the fallback for the long tail.
+    const Ctor: typeof AudioContext | undefined =
+      typeof AudioContext !== "undefined"
+        ? AudioContext
+        : (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) throw new Error("AudioContext unavailable");
+
+    try {
+      this.audioCtx = new Ctor({ sampleRate, latencyHint: "interactive" });
+    } catch {
+      // Some browsers reject specific sampleRate values; default rate is
+      // resampled by AudioContext for AudioBuffer playback but NOT for
+      // AudioWorklet output, so audio would play at the wrong speed. Worth
+      // surfacing so we can spot it in the badge.
+      this.audioCtx = new Ctor({ latencyHint: "interactive" });
+      status(`sampleRate ${sampleRate}Hz rejected; using ${this.audioCtx.sampleRate}Hz (audio may be off-pitch)`);
+    }
+    if (!this.audioCtx.audioWorklet) throw new Error("AudioWorklet unsupported");
+
+    // Wait for resume() and verify the context actually transitioned. iOS
+    // Safari sometimes ignores resume() if the call isn't synchronously inside
+    // the gesture — log that state so we can tell which failure we're in.
+    await this.audioCtx.resume();
+    if (this.audioCtx.state !== "running") {
+      status(`resume returned but state=${this.audioCtx.state}`);
+    }
+
+    await this.audioCtx.audioWorklet.addModule(WORKLET_URL);
+    if (this.exiting) return;
+
+    // outputChannelCount intentionally NOT specified — let the platform pick.
+    // Some iOS Safari builds reject [1] mono explicitly; the worklet handles
+    // both mono and N-channel outputs (mirrors mono → all channels).
+    this.audioNode = new AudioWorkletNode(this.audioCtx, PROCESSOR_NAME, {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+    });
+    this.audioNode.port.onmessage = (e) => {
+      const msg = e.data;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "primed") status("primed");
+      else if (msg.type === "tick") {
+        status(`playing ${this.audioCtx?.sampleRate ?? "?"}Hz · q=${msg.queued} · rx=${msg.totalReceived}`);
+      }
+    };
+    this.audioNode.connect(this.audioCtx.destination);
+    status(`running ${this.audioCtx.sampleRate}Hz`);
   }
 
   private handleKey(e: KeyboardEvent, pressed: boolean): void {

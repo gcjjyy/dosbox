@@ -28,6 +28,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const [saving, setSaving] = useState(false);
   const [savingUserState, setSavingUserState] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [audioStatus, setAudioStatus] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   const [resolutionId, setResolutionId] = useResolution();
@@ -41,6 +42,10 @@ export default function Index({ loaderData }: Route.ComponentProps) {
 
   const onEmulator = useCallback((emu: DosEmulator | null) => {
     emulatorRef.current = emu;
+  }, []);
+
+  const onAudioStatus = useCallback((text: string) => {
+    setAudioStatus(text);
   }, []);
 
   const onVkbKeyDown = useCallback((code: number) => {
@@ -142,6 +147,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
             bundleUrl="/dos.jsdos"
             onReady={onReady}
             onEmulator={onEmulator}
+            onAudioStatus={onAudioStatus}
             width={resolution.width}
             height={resolution.height}
           />
@@ -149,6 +155,11 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         {status && (
           <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-black/80 px-3 py-1 text-xs">
             {status}
+          </div>
+        )}
+        {audioStatus && (
+          <div className="pointer-events-none absolute right-2 top-2 max-w-[70vw] truncate rounded bg-black/70 px-2 py-0.5 text-[10px] font-mono text-amber-300">
+            🔊 {audioStatus}
           </div>
         )}
       </main>

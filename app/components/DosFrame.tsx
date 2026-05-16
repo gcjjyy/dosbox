@@ -13,6 +13,8 @@ export interface DosFrameProps {
   onError?: (err: unknown) => void;
   /** Called when DosEmulator instance is available (and again with null on unmount). */
   onEmulator?: (emu: DosEmulator | null) => void;
+  /** Forwards engine audio-init lifecycle to the parent for diagnostics. */
+  onAudioStatus?: (text: string) => void;
   /** Display width in CSS px. null → fill available space (object-fit contain). */
   width?: number | null;
   /** Display height in CSS px. null → fill available space. */
@@ -60,7 +62,7 @@ async function streamBundle(
   return out;
 }
 
-export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, height }: DosFrameProps) {
+export function DosFrame({ bundleUrl, onReady, onError, onEmulator, onAudioStatus, width, height }: DosFrameProps) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const [bootVisible, setBootVisible] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -133,6 +135,7 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
         canvas: ref.current,
         bundle,
         overlay,
+        onAudioStatus,
         onExtractProgress: (f) => setPhaseProgress("extract", f),
         onReady: (ci) => {
           // Extract is done by the time onReady fires inside the bridge,
@@ -165,7 +168,7 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
         void emulator.destroy().catch(() => undefined);
       }
     };
-  }, [bundleUrl, onReady, onError, onEmulator]);
+  }, [bundleUrl, onReady, onError, onEmulator, onAudioStatus]);
 
   return (
     <div className="dos-stage">
