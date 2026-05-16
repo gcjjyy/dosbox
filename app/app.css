@@ -412,6 +412,70 @@ html { color-scheme: dark; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Mobile-only tab bar (ABC / 123 / FN on left, 한/영 on right) */
+.vkb-tabbar {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+.vkb-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 0;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-navy-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.vkb-tab--active {
+  background: var(--color-navy-accent);
+  border-color: var(--color-navy-accent);
+  color: #050912;
+  font-weight: 700;
+}
+.vkb-tab--spacer {
+  flex-grow: 6;
+  visibility: hidden;
+}
+
+/* Mobile page content (between tab bar and util row) */
+.vkb-content {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Desktop-only absolute-positioned 한/영 button (above F12) */
+.vkb-lang-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid rgba(91, 141, 239, 0.3);
+  border-radius: 5px;
+  background: rgba(10, 15, 31, 0.6);
+  color: var(--color-navy-text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  z-index: 1;
+}
+.vkb-lang-btn--active {
+  background: var(--color-navy-accent);
+  border-color: var(--color-navy-accent);
+  color: #050912;
+}
+
 .vkb-row { display: flex; gap: 5px; }
 .vkb-spacer { flex: 1 1 0; min-width: 0; }
 /* Fixed-width arrow cluster so ↑ and ↓ share an x position across rows
@@ -492,11 +556,6 @@ html { color-scheme: dark; }
     border-bottom: 0;
   }
   .vkb-row { gap: 4px; }
-  .vkb-arrows-col {
-    flex: 3 1 0;
-    min-width: 0;
-    gap: 4px;
-  }
   .vkb-key {
     min-height: 40px;
     font-size: 12px;
