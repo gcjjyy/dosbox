@@ -1,0 +1,12 @@
+#!/bin/sh
+# Project-local post-commit shim.
+#
+# Setting `core.hooksPath = .githooks` (per-repo, see CLAUDE.md) overrides
+# the user-global hooksPath, which would otherwise dispatch to
+# ~/.claude/git-hooks/post-commit (the QuickBASIC 4.5 auto-logger).
+# Re-invoke it here so the global logger still fires for this repo.
+
+global_hook="$HOME/.claude/git-hooks/post-commit"
+if [ -x "$global_hook" ]; then
+  "$global_hook" "$@"
+fi
