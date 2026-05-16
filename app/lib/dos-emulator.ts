@@ -112,6 +112,39 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
+function waitForRunning(
+  ctx: AudioContext,
+  timeoutMs: number,
+  status: (s: string) => void,
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (ctx.state === "running") return resolve();
+    const start = Date.now();
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      ctx.removeEventListener("statechange", onChange);
+      resolve();
+    };
+    const onChange = () => {
+      status(`state→${ctx.state}`);
+      if (ctx.state === "running") finish();
+    };
+    ctx.addEventListener("statechange", onChange);
+    const poll = () => {
+      if (done) return;
+      if (ctx.state === "running") return finish();
+      if (Date.now() - start > timeoutMs) {
+        status(`state stuck=${ctx.state} after ${timeoutMs}ms`);
+        return finish();
+      }
+      setTimeout(poll, 100);
+    };
+    setTimeout(poll, 100);
+  });
+}
+
 export interface DosEmulatorOpts {
   canvas: HTMLCanvasElement;
   bundle: Uint8Array;
@@ -386,16 +419,42 @@ export class DosEmulator {
       status(`sr ${sampleRate} rejected → ${this.audioCtx.sampleRate}`);
     }
     status(`ctor state=${this.audioCtx.state}`);
-    if (!this.audioCtx.audioWorklet) throw new Error("AudioWorklet unsupported");
+    if (!this.audioCtx.audioWorklet || typeof this.audioCtx.audioWorklet.addModule !== "function") {
+      throw new Error("AudioWorklet API missing");
+    }
 
-    // Each await yields a microtask. iOS Safari ties "user gesture context"
-    // to the whole task that contained the gesture handler, but a long await
-    // (network fetch / OS audio init) can drift past the task boundary on
-    // slow devices. Wrap every awaited promise in a timeout so a hang shows
-    // up in the badge instead of leaving us silent.
-    status("resume…");
-    await withTimeout(this.audioCtx.resume(), 4000, "resume");
-    status(`resumed state=${this.audioCtx.state}`);
+    // ── iOS unlock dance ──────────────────────────────────────────
+    // Last test showed `failed: resume timeout 4000ms` on mobile — the
+    // resume() promise never resolves on iOS Safari in some configurations,
+    // even from inside a gesture-rooted async function. Two countermeasures
+    // that combined are known to defeat this:
+    //
+    //   1. Synchronously create + start a 1-frame silent BufferSource. This
+    //      forces the audio output device to engage. Without this, iOS leaves
+    //      the audio HW idle and resume() has nothing to wait for.
+    //   2. Don't await resume(). Kick it off, then watch ctx.state directly.
+    //      iOS has been observed to transition state to "running" while never
+    //      resolving the resume() Promise (Webkit bug). Polling state is the
+    //      authoritative signal.
+    try {
+      const silent = this.audioCtx.createBuffer(1, 1, this.audioCtx.sampleRate);
+      const src = this.audioCtx.createBufferSource();
+      src.buffer = silent;
+      src.connect(this.audioCtx.destination);
+      src.start(0);
+    } catch (e) {
+      status(`unlock-buf err: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    void this.audioCtx.resume().catch((err) => {
+      status(`resume err: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    status("resume kicked");
+
+    // Watch ctx.state for "running" with a 2.5 s budget; if it never gets
+    // there, proceed anyway and surface the lingering state so the badge
+    // shows it (we may still get audio if state flips later).
+    await waitForRunning(this.audioCtx, 2500, status);
+    status(`pre-module state=${this.audioCtx.state}`);
 
     status("addModule…");
     await withTimeout(
@@ -418,7 +477,7 @@ export class DosEmulator {
       if (!msg || typeof msg !== "object") return;
       if (msg.type === "primed") status("primed");
       else if (msg.type === "tick") {
-        status(`play ${this.audioCtx?.sampleRate ?? "?"}Hz q=${msg.queued} rx=${msg.totalReceived}`);
+        status(`play ${this.audioCtx?.sampleRate ?? "?"}Hz q=${msg.queued} rx=${msg.totalReceived} st=${this.audioCtx?.state ?? "?"}`);
       }
     };
     this.audioNode.connect(this.audioCtx.destination);
