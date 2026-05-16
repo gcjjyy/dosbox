@@ -28,17 +28,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const [saving, setSaving] = useState(false);
   const [savingUserState, setSavingUserState] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  // Persistent scrolling log of audio init messages — single-line badge was
-  // overwritten too fast to read intermediate stages on mobile. Last 15
-  // entries with a relative-ms timestamp. Hidden 5 s after first stable
-  // "play …" tick so the UI is clean once audio is confirmed working —
-  // unless an error keyword appeared, in which case it stays visible so
-  // we can see what broke.
-  const [audioStatusLog, setAudioStatusLog] = useState<string[]>([]);
-  const [audioStable, setAudioStable] = useState(false);
-  const audioStartRef = useRef<number | null>(null);
-  const audioStableRef = useRef(false);
-  const audioHideTimerRef = useRef<number | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   const [resolutionId, setResolutionId] = useResolution();
@@ -52,35 +41,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
 
   const onEmulator = useCallback((emu: DosEmulator | null) => {
     emulatorRef.current = emu;
-  }, []);
-
-  const onAudioStatus = useCallback((text: string) => {
-    if (audioStartRef.current === null) audioStartRef.current = Date.now();
-    const ms = Date.now() - audioStartRef.current;
-    const entry = `+${String(ms).padStart(5, " ")}ms ${text}`;
-    setAudioStatusLog((prev) => {
-      const next = prev.length >= 15 ? [...prev.slice(prev.length - 14), entry] : [...prev, entry];
-      return next;
-    });
-
-    // Error keyword → keep visible, cancel any pending hide.
-    if (/err|fail|stuck|rejected|timeout/i.test(text)) {
-      if (audioHideTimerRef.current !== null) {
-        clearTimeout(audioHideTimerRef.current);
-        audioHideTimerRef.current = null;
-      }
-      audioStableRef.current = false;
-      setAudioStable(false);
-      return;
-    }
-    // First "play …" tick = audio confirmed flowing. Hide after 5 s.
-    if (text.startsWith("play ") && audioHideTimerRef.current === null && !audioStableRef.current) {
-      audioHideTimerRef.current = window.setTimeout(() => {
-        audioStableRef.current = true;
-        setAudioStable(true);
-        audioHideTimerRef.current = null;
-      }, 5000);
-    }
   }, []);
 
   const onVkbKeyDown = useCallback((code: number) => {
@@ -182,7 +142,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
             bundleUrl="/dos.jsdos"
             onReady={onReady}
             onEmulator={onEmulator}
-            onAudioStatus={onAudioStatus}
             width={resolution.width}
             height={resolution.height}
           />
@@ -190,13 +149,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         {status && (
           <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-black/80 px-3 py-1 text-xs">
             {status}
-          </div>
-        )}
-        {audioStatusLog.length > 0 && !audioStable && (
-          <div className="pointer-events-none absolute right-2 top-2 max-w-[90vw] rounded bg-black/85 px-2 py-1 text-[11px] font-mono leading-tight text-amber-300">
-            {audioStatusLog.map((line, i) => (
-              <div key={`${i}-${line}`} className="truncate">🔊 {line}</div>
-            ))}
           </div>
         )}
       </main>

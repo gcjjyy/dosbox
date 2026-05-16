@@ -22,9 +22,6 @@ class DosAudioProcessor extends AudioWorkletProcessor {
     this._primed = false;
     this._maxQueue = 6144;
     this._primeThreshold = 2048;
-    this._totalReceived = 0;
-    this._processCalls = 0;
-    this._lastReportAt = 0;
 
     this.port.onmessage = (event) => {
       const data = event.data;
@@ -41,25 +38,10 @@ class DosAudioProcessor extends AudioWorkletProcessor {
       if (this._queuedLength >= this._maxQueue) return;
       this._queue.push(data);
       this._queuedLength += data.length;
-      this._totalReceived += data.length;
     };
   }
 
   process(_inputs, outputs) {
-    this._processCalls++;
-    // Periodic heartbeat back to the main thread so the audio-status badge can
-    // tell "worklet alive" from "worklet never ran" (the iOS suspended-context
-    // failure mode). One message per ~1 s @ 128-frame quantum is cheap.
-    if (this._processCalls % 200 === 0) {
-      this.port.postMessage({
-        type: 'tick',
-        processCalls: this._processCalls,
-        queued: this._queuedLength,
-        totalReceived: this._totalReceived,
-        primed: this._primed,
-      });
-    }
-
     const output = outputs[0];
     if (!output || output.length === 0) return true;
     const channel = output[0];
@@ -68,7 +50,6 @@ class DosAudioProcessor extends AudioWorkletProcessor {
     if (!this._primed) {
       if (this._queuedLength >= this._primeThreshold) {
         this._primed = true;
-        this.port.postMessage({ type: 'primed', queued: this._queuedLength });
       } else {
         return true; // silence until primed (output is pre-zeroed)
       }

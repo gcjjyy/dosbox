@@ -112,11 +112,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
-function waitForRunning(
-  ctx: AudioContext,
-  timeoutMs: number,
-  status: (s: string) => void,
-): Promise<void> {
+function waitForRunning(ctx: AudioContext, timeoutMs: number): Promise<void> {
   return new Promise((resolve) => {
     if (ctx.state === "running") return resolve();
     const start = Date.now();
@@ -127,18 +123,12 @@ function waitForRunning(
       ctx.removeEventListener("statechange", onChange);
       resolve();
     };
-    const onChange = () => {
-      status(`state→${ctx.state}`);
-      if (ctx.state === "running") finish();
-    };
+    const onChange = () => { if (ctx.state === "running") finish(); };
     ctx.addEventListener("statechange", onChange);
     const poll = () => {
       if (done) return;
       if (ctx.state === "running") return finish();
-      if (Date.now() - start > timeoutMs) {
-        status(`state stuck=${ctx.state} after ${timeoutMs}ms`);
-        return finish();
-      }
+      if (Date.now() - start > timeoutMs) return finish();
       setTimeout(poll, 100);
     };
     setTimeout(poll, 100);
@@ -156,11 +146,6 @@ export interface DosEmulatorOpts {
   onError?: (err: unknown) => void;
   /** Fraction in [0,1] of bundle extraction progress reported by the WASM bridge. */
   onExtractProgress?: (fraction: number) => void;
-  /** Surfaces the audio init lifecycle for the UI's diagnostic badge.
-   *  Sequence on a healthy boot:
-   *    "wait gesture" → "init" → "running 22050Hz" → "primed" → "playing"
-   *  Anything else is a failure mode worth reporting. */
-  onAudioStatus?: (text: string) => void;
 }
 
 export class DosEmulator {
@@ -281,15 +266,8 @@ export class DosEmulator {
     // pre-gesture chunks reach pushAudio. They no-op (audioNode is null) —
     // same effective behavior as the old "drop while suspended" path.
     const sampleRate = ci.soundFrequency();
-    const audioStatus = (s: string) => {
-      console.info("[dos-audio]", s);
-      this.opts.onAudioStatus?.(s);
-    };
-    if (sampleRate === 0) {
-      audioStatus("disabled (sampleRate=0)");
-    } else {
+    if (sampleRate > 0) {
       events.onSoundPush((samples) => this.pushAudio(samples));
-      audioStatus("wait gesture");
 
       // First gesture wins. Each handler removes the other.
       const setupOnce = async (): Promise<void> => {
@@ -299,11 +277,10 @@ export class DosEmulator {
           this.gestureUnlock = null;
         }
         try {
-          await this.setupAudio(sampleRate, audioStatus);
+          await this.setupAudio(sampleRate);
         } catch (err) {
-          // Audio failure must never break video/input. Log + report.
+          // Audio failure must never break video/input.
           console.warn("[dos-emulator] audio init failed:", err);
-          audioStatus(`failed: ${err instanceof Error ? err.message : String(err)}`);
           if (this.audioCtx) {
             try { await this.audioCtx.close(); } catch { /* ignore */ }
             this.audioCtx = null;
@@ -422,9 +399,8 @@ export class DosEmulator {
     node.port.postMessage(toSend, [toSend.buffer]);
   }
 
-  private async setupAudio(sourceRate: number, status: (s: string) => void): Promise<void> {
+  private async setupAudio(sourceRate: number): Promise<void> {
     if (this.audioCtx || this.exiting) return;
-    status("init");
 
     // Safari (<14.5) only exposed webkitAudioContext. Current iOS Safari has
     // both names, but keep the fallback for the long tail.
@@ -435,74 +411,50 @@ export class DosEmulator {
     if (!Ctor) throw new Error("AudioContext unavailable");
 
     // Match upstream js-dos: request the DOS mixer rate from AudioContext.
-    // On desktop and on browsers that honor the request, ctx.sampleRate ===
+    // On desktop and browsers that honor the request, ctx.sampleRate ===
     // sourceRate and the resample fast-path in pushAudio is a no-op (ratio=1).
     //
-    // v1.0.19 added latencyHint:"interactive" alongside the sampleRate option
-    // and that combination broke iOS unlock (state stuck "suspended" forever).
-    // v1.0.20 dropped both options and worked. Narrow it back down: just the
-    // sampleRate, no latencyHint. Whatever iOS does with it (honor / coerce /
-    // throw), the dynamic resampleRatio below handles it gracefully.
+    // CRITICAL: pass ONLY {sampleRate}. Adding latencyHint:"interactive"
+    // (or any "unlock dance" with a silent BufferSource / oscillator, or
+    // `await`ing resume()) caused iOS Safari to leave the context stuck in
+    // state="suspended" forever even from inside a gesture handler. The
+    // dynamic resampleRatio handles whatever the browser actually picks.
     try {
       this.audioCtx = new Ctor({ sampleRate: sourceRate });
-    } catch (err) {
-      status(`sr opt rejected (${err instanceof Error ? err.message : String(err)}); bare ctx`);
+    } catch {
       this.audioCtx = new Ctor();
     }
     this.resampleRatio = this.audioCtx.sampleRate / sourceRate;
-    status(`ctor src=${sourceRate} ctx=${this.audioCtx.sampleRate} ratio=${this.resampleRatio.toFixed(3)} state=${this.audioCtx.state}`);
     if (!this.audioCtx.audioWorklet || typeof this.audioCtx.audioWorklet.addModule !== "function") {
       throw new Error("AudioWorklet API missing");
     }
 
-    // Kick resume() inside the gesture's task (no await — see below).
-    // Don't await resume(): WebKit has been observed to return a Promise
-    // that never resolves even when ctx.state actually does transition to
-    // "running". Polling state via waitForRunning is the authoritative path.
-    void this.audioCtx.resume().catch((err) => {
-      status(`resume1 err: ${err instanceof Error ? err.message : String(err)}`);
-    });
-    status("kick1");
+    // Kick resume() inside the gesture's task. Don't await it: WebKit has
+    // been observed to return a Promise that never resolves even when
+    // ctx.state actually transitions to "running". Poll state instead.
+    void this.audioCtx.resume().catch(() => undefined);
+    await waitForRunning(this.audioCtx, 2000);
 
-    // Watch for state="running" with a 2 s budget; continue anyway on
-    // timeout so we can see the lingering state in the badge.
-    await waitForRunning(this.audioCtx, 2000, status);
-    status(`pre-module state=${this.audioCtx.state}`);
-
-    status("addModule…");
     await withTimeout(
       this.audioCtx.audioWorklet.addModule(WORKLET_URL),
       6000,
       "addModule",
     );
     if (this.exiting) return;
-    status("module ok");
 
-    // outputChannelCount intentionally NOT specified — let the platform pick.
-    // Some iOS Safari builds reject [1] mono explicitly; the worklet handles
-    // both mono and N-channel outputs (mirrors mono → all channels).
+    // outputChannelCount intentionally NOT specified — let the platform
+    // pick. Some iOS Safari builds reject [1] mono explicitly; the worklet
+    // handles both mono and N-channel outputs (mirrors mono → all channels).
     this.audioNode = new AudioWorkletNode(this.audioCtx, PROCESSOR_NAME, {
       numberOfInputs: 0,
       numberOfOutputs: 1,
     });
-    this.audioNode.port.onmessage = (e) => {
-      const msg = e.data;
-      if (!msg || typeof msg !== "object") return;
-      if (msg.type === "primed") status("primed");
-      else if (msg.type === "tick") {
-        status(`play ${this.audioCtx?.sampleRate ?? "?"}Hz q=${msg.queued} rx=${msg.totalReceived} st=${this.audioCtx?.state ?? "?"}`);
-      }
-    };
     this.audioNode.connect(this.audioCtx.destination);
-    status(`connected state=${this.audioCtx.state}`);
 
-    // Re-kick resume after the audio graph is fully wired. iOS sometimes
-    // wants the destination to be a non-empty graph before it'll commit.
-    void this.audioCtx.resume().catch((err) => {
-      status(`resume2 err: ${err instanceof Error ? err.message : String(err)}`);
-    });
-    await waitForRunning(this.audioCtx, 1500, status);
-    status(`final ctx=${this.audioCtx.sampleRate}Hz state=${this.audioCtx.state} ratio=${this.resampleRatio.toFixed(2)}`);
+    // Re-kick resume after the audio graph is wired. iOS sometimes wants
+    // the destination to be a non-empty graph before it'll commit.
+    void this.audioCtx.resume().catch(() => undefined);
+    await waitForRunning(this.audioCtx, 1500);
   }
 
   private handleKey(e: KeyboardEvent, pressed: boolean): void {
