@@ -6,6 +6,7 @@
 // sendKeyDown/Up. No React, no js-dos UI.
 
 import { keymap } from "./dos-keymap";
+import { PROCESSOR_NAME, createWorkletModuleUrl } from "./dos-audio-worklet";
 
 export interface CommandInterface {
   exit: () => Promise<void>;
@@ -124,7 +125,7 @@ export class DosEmulator {
   private quadBuf: WebGLBuffer | null = null;
   private ci: CommandInterface | null = null;
   private audioCtx: AudioContext | null = null;
-  private nextAudioTime = 0;
+  private audioNode: AudioWorkletNode | null = null;
   private firstFrame = false;
   private exiting = false;
   // Latest pixel buffer staged by onFrame; consumed by the next RAF tick.
@@ -211,28 +212,81 @@ export class DosEmulator {
     });
 
     // ── Audio ─────────────────────────────────────────────────────
+    // Pull-based pipeline: AudioWorkletNode owns a ring buffer on the audio
+    // thread; main thread just posts Float32Array chunks via the node's port.
+    // This replaces the old per-chunk createBufferSource + future-schedule
+    // pattern, which was dropping nearly all chunks on mobile because the
+    // 10ms MAX_LEAD cap couldn't survive Worker→main-thread postMessage
+    // jitter. Matches the upstream js-dos pipeline (ring buffer + onaudio
+    // process) but uses the modern AudioWorklet API.
     const sampleRate = ci.soundFrequency();
     if (sampleRate > 0) {
-      try {
-        this.audioCtx = new AudioContext({ sampleRate });
-      } catch {
-        this.audioCtx = new AudioContext();
-      }
-      this.nextAudioTime = this.audioCtx.currentTime;
+      // latencyHint: 'interactive' matches js-dos and gives the platform
+      // permission to pick a small device buffer. Safari (<14.5) historically
+      // exposed AudioContext as webkitAudioContext only — fall back if needed
+      // even though current iOS Safari supports the standard name.
+      const Ctor: typeof AudioContext | undefined =
+        typeof AudioContext !== "undefined"
+          ? AudioContext
+          : (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (Ctor) {
+        try {
+          try {
+            this.audioCtx = new Ctor({ sampleRate, latencyHint: "interactive" });
+          } catch {
+            // Some browsers reject specific sampleRate values; fall back to default.
+            this.audioCtx = new Ctor({ latencyHint: "interactive" });
+          }
 
-      const unlock = () => {
-        this.audioCtx?.resume().catch(() => undefined);
-        if (this.gestureUnlock) {
-          window.removeEventListener("pointerdown", this.gestureUnlock, true);
-          window.removeEventListener("keydown", this.gestureUnlock, true);
-          this.gestureUnlock = null;
+          // AudioWorklet was shipped everywhere by Safari 14.5 (2021). If a
+          // visitor's browser is older, fall through to no-audio rather than
+          // crash the boot — they still get a playable but silent emulator.
+          if (!this.audioCtx.audioWorklet) {
+            throw new Error("AudioWorklet unsupported");
+          }
+
+          const unlock = () => {
+            this.audioCtx?.resume().catch(() => undefined);
+            if (this.gestureUnlock) {
+              window.removeEventListener("pointerdown", this.gestureUnlock, true);
+              window.removeEventListener("keydown", this.gestureUnlock, true);
+              this.gestureUnlock = null;
+            }
+          };
+          this.gestureUnlock = unlock;
+          window.addEventListener("pointerdown", unlock, true);
+          window.addEventListener("keydown", unlock, true);
+
+          // Load the processor module via Blob URL — no static asset, no build
+          // plugin. Revoke the URL once addModule resolves; the worklet code is
+          // already parsed and registered by then.
+          const moduleUrl = createWorkletModuleUrl();
+          try {
+            await this.audioCtx.audioWorklet.addModule(moduleUrl);
+          } finally {
+            URL.revokeObjectURL(moduleUrl);
+          }
+          if (this.exiting) return;
+
+          this.audioNode = new AudioWorkletNode(this.audioCtx, PROCESSOR_NAME, {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [1],
+          });
+          this.audioNode.connect(this.audioCtx.destination);
+
+          events.onSoundPush((samples) => this.pushAudio(samples));
+        } catch (err) {
+          // Audio init failure must never break the emulator — video + input
+          // are independent. Log and continue silently.
+          console.warn("[dos-emulator] audio init failed; running without sound:", err);
+          if (this.audioCtx) {
+            try { await this.audioCtx.close(); } catch { /* ignore */ }
+            this.audioCtx = null;
+          }
+          this.audioNode = null;
         }
-      };
-      this.gestureUnlock = unlock;
-      window.addEventListener("pointerdown", unlock, true);
-      window.addEventListener("keydown", unlock, true);
-
-      events.onSoundPush((samples) => this.pushAudio(samples));
+      }
     }
 
     // ── Listeners ─────────────────────────────────────────────────
@@ -310,34 +364,14 @@ export class DosEmulator {
   };
 
   private pushAudio(samples: Float32Array): void {
-    const audioCtx = this.audioCtx;
-    if (!audioCtx) return;
-    // Drop samples while the context is suspended (autoplay policy holds it
-    // there until the first user gesture). Without this, the boot-time
-    // sound emitted during the first ~4–5 s gets queued at currentTime=0
-    // and then plays back as a long delayed burst after resume().
-    if (audioCtx.state !== "running") return;
-    if (samples.length === 0) return;
-    const now = audioCtx.currentTime;
-    // The WASM emulator runs in a Worker and posts sound samples back to the
-    // main thread. Chrome batches those messages while the main thread is
-    // busy (WASM load + bundle extract + first paint), then drains the queue
-    // in a burst once it idles. Each chunk advances `nextAudioTime` by its
-    // full duration even though wall-clock barely moved, so without a cap
-    // the schedule cursor races ahead of `currentTime` and every later
-    // sample is queued in the future — audio lags video by that lead. Keep
-    // the lead tight (~one chunk of jitter tolerance) so steady-state lag
-    // stays below the AV-sync perception threshold.
-    const MAX_LEAD = 0.01;
-    if (this.nextAudioTime - now > MAX_LEAD) return;
-    const buffer = audioCtx.createBuffer(1, samples.length, audioCtx.sampleRate);
-    buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0);
-    const source = audioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioCtx.destination);
-    const t = Math.max(now, this.nextAudioTime);
-    source.start(t);
-    this.nextAudioTime = t + buffer.duration;
+    const node = this.audioNode;
+    if (!node || samples.length === 0) return;
+    // Defensive copy: the WASM bridge reuses this buffer between callbacks.
+    // Transfer the copy's ArrayBuffer to the audio thread so the post is
+    // zero-copy. Backpressure (queue cap, prime delay before suspended
+    // context resumes, underrun handling) all lives in the worklet.
+    const copy = new Float32Array(samples);
+    node.port.postMessage(copy, [copy.buffer]);
   }
 
   private handleKey(e: KeyboardEvent, pressed: boolean): void {
@@ -398,6 +432,11 @@ export class DosEmulator {
     if (this.ci) {
       try { await this.ci.exit(); } catch { /* ignore */ }
       this.ci = null;
+    }
+    if (this.audioNode) {
+      try { this.audioNode.port.postMessage({ type: "reset" }); } catch { /* ignore */ }
+      try { this.audioNode.disconnect(); } catch { /* ignore */ }
+      this.audioNode = null;
     }
     if (this.audioCtx) {
       try { await this.audioCtx.close(); } catch { /* ignore */ }
