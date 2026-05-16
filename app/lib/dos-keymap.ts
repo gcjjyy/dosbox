@@ -80,7 +80,7 @@ export const keymap: Readonly<Record<string, number>> = {
 
 // Scancode constants used by the virtual keyboard.
 export const SC = {
-  ESC: 256, BS: 259, TAB: 258, ENTER: 257, SPACE: 32,
+  ESC: 256, BS: 259, TAB: 258, ENTER: 257, SPACE: 32, CAPSLOCK: 280,
   SHIFT: 340, CTRL: 341, ALT: 342,
   UP: 265, DOWN: 264, LEFT: 263, RIGHT: 262,
   A: 65, B: 66, C: 67, D: 68, E: 69, F: 70, G: 71, H: 72, I: 73, J: 74,
@@ -93,3 +93,20 @@ export const SC = {
   F1: 290, F2: 291, F3: 292, F4: 293, F5: 294, F6: 295, F7: 296, F8: 297, F9: 298, F10: 299,
   F11: 300, F12: 301,
 } as const;
+
+// 두벌식 (Dubeolsik / "two-set") Korean jamo positions on a standard
+// US QWERTY keyboard. Used by VirtualKeyboard for visual-only label
+// swapping when 한/영 is set to Korean — scancodes are unchanged, so
+// DOS still receives A/B/C etc. and any DOS-side IME (e.g. 한글 도깨비)
+// controls the actual input mode.
+export const HANGUL_LABELS: Readonly<Record<number, string>> = {
+  // Top row
+  [SC.Q]: "ㅂ", [SC.W]: "ㅈ", [SC.E]: "ㄷ", [SC.R]: "ㄱ", [SC.T]: "ㅅ",
+  [SC.Y]: "ㅛ", [SC.U]: "ㅕ", [SC.I]: "ㅑ", [SC.O]: "ㅐ", [SC.P]: "ㅔ",
+  // Home row
+  [SC.A]: "ㅁ", [SC.S]: "ㄴ", [SC.D]: "ㅇ", [SC.F]: "ㄹ", [SC.G]: "ㅎ",
+  [SC.H]: "ㅗ", [SC.J]: "ㅓ", [SC.K]: "ㅏ", [SC.L]: "ㅣ",
+  // Bottom row
+  [SC.Z]: "ㅋ", [SC.X]: "ㅌ", [SC.C]: "ㅊ", [SC.V]: "ㅍ", [SC.B]: "ㅠ",
+  [SC.N]: "ㅜ", [SC.M]: "ㅡ",
+};
