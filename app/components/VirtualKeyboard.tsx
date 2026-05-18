@@ -41,7 +41,7 @@ type KeyDef =
 
 type Page = "abc" | "123" | "fn";
 
-// ── Desktop full layout (original 6 rows + CapsLock + BS/ENT) ────
+// ── Desktop full layout (original 6 rows + CapsLock + BS/RET) ────
 // All main rows total flex = 15.25 so letter-cell widths match.
 const DESKTOP_ROWS: KeyDef[][] = [
   // Row 1: Esc + F1..F12 (3.25 + 12 = 15.25)
@@ -70,7 +70,7 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.LBRACKET, label: "[" }, { code: SC.RBRACKET, label: "]" },
     { code: SC.BACKSLASH, label: "\\" },
   ],
-  // Row 4: CapsLock + A..L + ; ' + ENT (2 + 11 + 2.25 = 15.25)
+  // Row 4: CapsLock + A..L + ; ' + RET (2 + 11 + 2.25 = 15.25)
   // CapsLock replaces the old Row 4 left spacer.
   [
     { code: SC.CAPSLOCK, label: "Caps", flex: 2 },
@@ -78,7 +78,7 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.F, label: "F" }, { code: SC.G, label: "G" }, { code: SC.H, label: "H" },
     { code: SC.J, label: "J" }, { code: SC.K, label: "K" }, { code: SC.L, label: "L" },
     { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
-    { code: SC.ENTER, label: "ENT", flex: 2.25 },
+    { code: SC.ENTER, label: "RET", flex: 2.25 },
   ],
   // Row 5 main: Shift + Z..M + , . / (2.25 + 10 = 12.25, arrow col follows)
   [
@@ -187,7 +187,7 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
 };
 
 // Always-visible bottom row on every mobile page.
-// Esc Ctrl Alt Shift + Space (4-wide) + BS ENT (4 mod + 4 space + 2 narrow = 10)
+// Esc Ctrl Alt Shift + Space (4-wide) + BS RET (4 mod + 4 space + 2 narrow = 10)
 const MOBILE_UTIL_ROW: KeyDef[] = [
   { code: SC.ESC, label: "Esc", modifier: false },
   { code: SC.CTRL, label: "Ctrl", modifier: true },
@@ -195,7 +195,7 @@ const MOBILE_UTIL_ROW: KeyDef[] = [
   { code: SC.SHIFT, label: "Shift", modifier: true },
   { code: SC.SPACE, label: "Space", flex: 4 },
   { code: SC.BS, label: "BS" },
-  { code: SC.ENTER, label: "ENT" },
+  { code: SC.ENTER, label: "RET" },
 ];
 
 // Hook: subscribes to (max-width: 640px) media query. Returns false
@@ -356,7 +356,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
     );
   }
 
-  // Desktop: original 6 rows with CapsLock substitution + BS/ENT labels.
+  // Desktop: original 6 rows with CapsLock substitution + BS/RET labels.
   return (
     <div className="vkb" role="group" aria-label="DOS 가상 키보드">
       {DESKTOP_ROWS.map((row, ri) => {
