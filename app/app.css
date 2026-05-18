@@ -406,8 +406,6 @@ html { color-scheme: dark; }
   padding: 10px;
 
   background: rgba(10, 15, 31, 0.72);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
 
   border: 1px solid rgba(91, 141, 239, 0.18);
   border-radius: 12px;
