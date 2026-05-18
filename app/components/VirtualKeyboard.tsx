@@ -183,6 +183,11 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.F10, label: "F10" }, { code: SC.F11, label: "F11" }, { code: SC.F12, label: "F12" },
       { spacer: true, flex: 2 },
     ],
+    // Empty spacer row so fn page totals 3 rows (abc/123 parity) and the
+    // util row stays at the same y across all pages.
+    [
+      { spacer: true, flex: 10 },
+    ],
   ],
 };
 
