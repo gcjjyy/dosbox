@@ -192,9 +192,9 @@ export class DosEmulator {
     });
     if (!gl) throw new Error("webgl context unavailable");
     this.gl = gl;
-    // Keep the CSS hint: when the canvas is upscaled by the compositor
-    // beyond its framebuffer, the browser will do a nearest-neighbor blit.
-    this.canvas.style.imageRendering = "pixelated";
+    // "auto" lets the compositor smooth any further upscale beyond the
+    // canvas framebuffer, matching the LINEAR sampling inside GL.
+    this.canvas.style.imageRendering = "auto";
     this.setupGL();
 
     this.onKeyDown = (e) => this.handleKey(e, true);
@@ -338,10 +338,11 @@ export class DosEmulator {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    // NEAREST keeps DOS pixels crisp; CSS image-rendering: pixelated handles
-    // any further upscale the compositor applies.
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    // LINEAR smooths the non-integer upscale from DOS framebuffer to canvas —
+    // notably 720x400 text mode into a 640x480-locked viewport, where NEAREST
+    // produced visibly broken glyph stems.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     // RGB rows for odd widths (e.g. 320*3=960 is %4 but 321*3=963 is not) —
     // tell the GPU not to expect 4-byte row alignment.
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);

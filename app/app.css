@@ -253,7 +253,7 @@ html { color-scheme: dark; }
     var(--color-navy-bg);
   overflow: auto;
 }
-.dos-canvas { image-rendering: pixelated; display: block; }
+.dos-canvas { image-rendering: auto; display: block; }
 .dos-canvas--fill {
   width: 100%;
   height: 100%;
