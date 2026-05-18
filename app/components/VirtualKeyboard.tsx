@@ -2,18 +2,19 @@
 //
 // Two layouts behind one component:
 //
-//  - Mobile (viewport ≤640px): tab bar (ABC/123/FN + 한/영) on top,
-//    active-page rows in the middle, always-visible util row at the
-//    bottom. Cells uniformly 10% of width; arrows live on the 123
-//    page as an inverted-T occupying R2 col 9 and R3 cols 8-10.
+//  - Mobile (viewport ≤640px): tab bar (ABC / 123 / FN, evenly
+//    distributed) on top, active-page rows in the middle, always-
+//    visible util row at the bottom. Cells uniformly 10% of width;
+//    arrows live on the 123 page as an inverted-T occupying R2 col 9
+//    and R3 cols 8-10.
 //
 //  - Desktop (viewport >640px): the original 6-row full keyboard,
-//    with CapsLock filling the Row 4 left spacer and an absolutely
-//    positioned 한/영 button at the top-right.
+//    with CapsLock filling the Row 4 left spacer.
 //
-// 한/영 toggle is presentation-only: it swaps Q-M letter labels
-// between English and 두벌식 jamo (from HANGUL_LABELS). Scancodes
-// are unchanged — DOS still receives A/B/C etc.
+// Letter keys always show two labels: English in the upper-left
+// corner, 두벌식 jamo (from HANGUL_LABELS) in the lower-right corner.
+// Scancodes are unchanged — DOS still receives A/B/C etc., so any
+// DOS-side IME (e.g. 한글 도깨비) controls the actual input mode.
 //
 // Sticky-once modifier semantics (Shift/Ctrl/Alt latch, release
 // after the next non-modifier key) preserved from the old keyboard.
@@ -39,7 +40,6 @@ type KeyDef =
     };
 
 type Page = "abc" | "123" | "fn";
-type Language = "en" | "ko";
 
 // ── Desktop full layout (original 6 rows + CapsLock + BS/ENT) ────
 // All main rows total flex = 15.25 so letter-cell widths match.
@@ -222,7 +222,6 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
   const [, setRender] = useReducer((x: number) => x + 1, 0);
 
   const [page, setPage] = useState<Page>("abc");
-  const [language, setLanguage] = useState<Language>("en");
   const isMobile = useIsMobile();
 
   const handleDown = useCallback(
@@ -265,17 +264,6 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
     [onKeyUp]
   );
 
-  // Resolve label: Korean mode overrides letters via HANGUL_LABELS;
-  // everything else (digits, punct, F-keys, modifiers, arrows) keeps
-  // its English label even when language === "ko".
-  function resolveLabel(k: Exclude<KeyDef, { spacer: true }>): string {
-    if (language === "ko") {
-      const jamo = HANGUL_LABELS[k.code];
-      if (jamo) return jamo;
-    }
-    return k.label;
-  }
-
   function renderCell(k: KeyDef, id: string) {
     if (k.spacer) {
       return (
@@ -291,6 +279,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
     const isPressed = isMod
       ? stickyModsRef.current.has(k.code)
       : pressedRef.current.has(id);
+    const hangul = HANGUL_LABELS[k.code];
     return (
       <button
         key={id}
@@ -317,7 +306,14 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
         }}
         onContextMenu={(e) => e.preventDefault()}
       >
-        {resolveLabel(k)}
+        {hangul ? (
+          <>
+            <span className="vkb-key__en">{k.label}</span>
+            <span className="vkb-key__ko">{hangul}</span>
+          </>
+        ) : (
+          k.label
+        )}
       </button>
     );
   }
@@ -327,25 +323,6 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
       <div className="vkb-row" key={prefix}>
         {row.map((k, ki) => renderCell(k, `${prefix}-${ki}`))}
       </div>
-    );
-  }
-
-  function renderLangButton(className: string) {
-    return (
-      <button
-        type="button"
-        tabIndex={-1}
-        className={
-          className + (language === "ko" ? " " + className + "--active" : "")
-        }
-        onPointerDown={(e) => {
-          e.preventDefault();
-          setLanguage((l) => (l === "en" ? "ko" : "en"));
-        }}
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        {language === "ko" ? "한" : "EN"}
-      </button>
     );
   }
 
@@ -368,8 +345,6 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
               {p === "abc" ? "ABC" : p === "123" ? "123" : "FN"}
             </button>
           ))}
-          <div className="vkb-tab vkb-tab--spacer" aria-hidden="true" />
-          {renderLangButton("vkb-tab")}
         </div>
 
         <div className="vkb-content">
@@ -381,11 +356,9 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
     );
   }
 
-  // Desktop: original 6 rows with CapsLock substitution + BS/ENT labels
-  // + absolute-positioned 한/영 button.
+  // Desktop: original 6 rows with CapsLock substitution + BS/ENT labels.
   return (
     <div className="vkb" role="group" aria-label="DOS 가상 키보드">
-      {renderLangButton("vkb-lang-btn")}
       {DESKTOP_ROWS.map((row, ri) => {
         const arrows = DESKTOP_ARROW_CLUSTERS[ri];
         return (

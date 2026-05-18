@@ -95,10 +95,10 @@ export const SC = {
 } as const;
 
 // 두벌식 (Dubeolsik / "two-set") Korean jamo positions on a standard
-// US QWERTY keyboard. Used by VirtualKeyboard for visual-only label
-// swapping when 한/영 is set to Korean — scancodes are unchanged, so
-// DOS still receives A/B/C etc. and any DOS-side IME (e.g. 한글 도깨비)
-// controls the actual input mode.
+// US QWERTY keyboard. Used by VirtualKeyboard to render the dual-label
+// (English upper-left, jamo lower-right) on letter keys. Scancodes are
+// unchanged — DOS still receives A/B/C etc. and any DOS-side IME
+// (e.g. 한글 도깨비) controls the actual input mode.
 export const HANGUL_LABELS: Readonly<Record<number, string>> = {
   // Top row
   [SC.Q]: "ㅂ", [SC.W]: "ㅈ", [SC.E]: "ㄷ", [SC.R]: "ㄱ", [SC.T]: "ㅅ",

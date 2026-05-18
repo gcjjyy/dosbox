@@ -424,7 +424,7 @@ html { color-scheme: dark; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Mobile-only tab bar (ABC / 123 / FN on left, 한/영 on right) */
+/* Mobile-only tab bar (ABC / 123 / FN, evenly distributed) */
 .vkb-tabbar {
   display: flex;
   gap: 5px;
@@ -451,44 +451,11 @@ html { color-scheme: dark; }
   color: #050912;
   font-weight: 700;
 }
-.vkb-tab--spacer {
-  flex-grow: 6;
-  visibility: hidden;
-  cursor: default;
-  border: none;
-  background: none;
-  padding: 0;
-}
-
 /* Mobile page content (between tab bar and util row) */
 .vkb-content {
   display: flex;
   flex-direction: column;
   gap: 5px;
-}
-
-/* Desktop-only absolute-positioned 한/영 button (above F12) */
-.vkb-lang-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  min-height: 26px;
-  padding: 3px 10px;
-  border: 1px solid rgba(91, 141, 239, 0.3);
-  border-radius: 5px;
-  background: rgba(10, 15, 31, 0.6);
-  color: var(--color-navy-text);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  z-index: 1;
-}
-.vkb-lang-btn--active {
-  background: var(--color-navy-accent);
-  border-color: var(--color-navy-accent);
-  color: #050912;
 }
 
 .vkb-row { display: flex; gap: 5px; }
@@ -502,6 +469,7 @@ html { color-scheme: dark; }
 }
 
 .vkb-key {
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
   min-height: 48px;     /* matches natural cell width at vkb max-width 820 — keeps letter keys ≈1:1 */
@@ -526,6 +494,22 @@ html { color-scheme: dark; }
     transform 70ms ease,
     box-shadow 90ms ease;
   cursor: pointer;
+}
+.vkb-key__en {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 0.85em;
+  line-height: 1;
+  pointer-events: none;
+}
+.vkb-key__ko {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  font-size: 0.85em;
+  line-height: 1;
+  pointer-events: none;
 }
 @media (hover: hover) {
   .vkb-key:hover {
