@@ -98,27 +98,28 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
     { code: SC.ENTER, label: "RET", flex: 2.5 },
   ],
-  // Row 5: Sh Z..M , . / ↑ Sh  (2.25 + 7 + 1 + 1 + 1 + 1 + 2 = 15.25)
+  // Row 5: Sh Z..M , . / ↑ Sh  (2.25 + 7 + 1 + 1 + 1 + 1.5 + 1.5 = 15.25)
+  // ↑ width 1.5 == R6 ↓ width → true inverted-T (centers aligned).
   [
     { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
     { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
     { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
     { code: SC.M, label: "M" },
     { code: SC.COMMA, label: "," }, { code: SC.PERIOD, label: "." }, { code: SC.SLASH, label: "/" },
-    { code: SC.UP, label: "↑" },
-    { code: SC.SHIFT, label: "Shift", flex: 2, modifier: true },
+    { code: SC.UP, label: "↑", flex: 1.5 },
+    { code: SC.SHIFT, label: "Shift", flex: 1.5, modifier: true },
   ],
-  // Row 6: Ctl Alt Space Alt ← ↓ → Ctl  (1.5+1.5+7+1.5+0.75+0.75+0.75+1.5 = 15.25)
-  // ↓ start = 1.5+1.5+7+1.5+0.75 = 12.25 == R5 ↑ start → inverted-T aligned.
+  // Row 6: Ctl Alt Space Alt ← ↓ →  (1.5+1.5+6.25+1.5+1.5+1.5+1.5 = 15.25)
+  // ↓ start = 1.5+1.5+6.25+1.5+1.5 = 12.25 == R5 ↑ start. Right Ctrl
+  // dropped — sacrificed for clean inverted-T alignment.
   [
     { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
-    { code: SC.SPACE, label: "Space", flex: 7 },
+    { code: SC.SPACE, label: "Space", flex: 6.25 },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
-    { code: SC.LEFT, label: "←", flex: 0.75 },
-    { code: SC.DOWN, label: "↓", flex: 0.75 },
-    { code: SC.RIGHT, label: "→", flex: 0.75 },
-    { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
+    { code: SC.LEFT, label: "←", flex: 1.5 },
+    { code: SC.DOWN, label: "↓", flex: 1.5 },
+    { code: SC.RIGHT, label: "→", flex: 1.5 },
   ],
 ];
 
@@ -162,8 +163,8 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.SEMICOLON, label: ";", flex: 0.5 },
       { code: SC.QUOTE, label: "'", flex: 0.5 },
     ],
-    // R5: ↑Sh Z..M , . ↑ RET  (2.5 + 7 + 0.5 + 0.5 + 0.5 + 1 = 12)
-    // ↑ ends at flex 11; util R6 ↓ aligns to that.
+    // R5: ↑Sh Z..M , . ↑ RET  (2.5 + 7 + 0.5 + 0.5 + 0.75 + 0.75 = 12)
+    // ↑ width 0.75 == R6 ↓ width, both starting at flex offset 10.5 → true inverted-T.
     [
       { code: SC.SHIFT, label: "↑Sh", flex: 2.5, modifier: true },
       { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
@@ -171,8 +172,8 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.M, label: "M" },
       { code: SC.COMMA, label: ",", flex: 0.5 },
       { code: SC.PERIOD, label: ".", flex: 0.5 },
-      { code: SC.UP, label: "↑", flex: 0.5 },
-      { code: SC.ENTER, label: "RET" },
+      { code: SC.UP, label: "↑", flex: 0.75 },
+      { code: SC.ENTER, label: "RET", flex: 0.75 },
     ],
   ],
   sym: [
@@ -228,13 +229,14 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.QUOTE, label: "'" },
       { code: SC.BACKSLASH, label: "|", symShift: true },
     ],
-    // R5: ↑Sh spacer(8) ↑ RET  (2.5 + 8 + 0.5 + 1 = 12)
-    // ↑ at flex 11 (same x as abc R5) — inverted-T continuity across modes.
+    // R5: ↑Sh spacer(8) ↑ RET  (2.5 + 8 + 0.75 + 0.75 = 12)
+    // ↑/RET widths match abc R5 so toggling between modes keeps the
+    // inverted-T cluster at exactly the same screen position.
     [
       { code: SC.SHIFT, label: "↑Sh", flex: 2.5, modifier: true },
       { spacer: true, flex: 8 },
-      { code: SC.UP, label: "↑", flex: 0.5 },
-      { code: SC.ENTER, label: "RET" },
+      { code: SC.UP, label: "↑", flex: 0.75 },
+      { code: SC.ENTER, label: "RET", flex: 0.75 },
     ],
   ],
 };
