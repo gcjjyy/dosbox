@@ -87,12 +87,25 @@ export const SC = {
   K: 75, L: 76, M: 77, N: 78, O: 79, P: 80, Q: 81, R: 82, S: 83,
   T: 84, U: 85, V: 86, W: 87, X: 88, Y: 89, Z: 90,
   D0: 48, D1: 49, D2: 50, D3: 51, D4: 52, D5: 53, D6: 54, D7: 55, D8: 56, D9: 57,
-  MINUS: 45, EQUAL: 61,
+  MINUS: 45, EQUAL: 61, GRAVE: 96,
   LBRACKET: 91, RBRACKET: 93, BACKSLASH: 92,
   SEMICOLON: 59, QUOTE: 39, COMMA: 44, PERIOD: 46, SLASH: 47,
   F1: 290, F2: 291, F3: 292, F4: 293, F5: 294, F6: 295, F7: 296, F8: 297, F9: 298, F10: 299,
   F11: 300, F12: 301,
 } as const;
+
+// Shifted glyph for each scancode that swaps under a held Shift key.
+// Letters intentionally omitted — VirtualKeyboard renders letter cells
+// as uppercase unconditionally (DOS displays uppercase by default).
+export const SHIFT_LABELS: Record<number, string> = {
+  [SC.GRAVE]: "~",
+  [SC.D1]: "!", [SC.D2]: "@", [SC.D3]: "#", [SC.D4]: "$", [SC.D5]: "%",
+  [SC.D6]: "^", [SC.D7]: "&", [SC.D8]: "*", [SC.D9]: "(", [SC.D0]: ")",
+  [SC.MINUS]: "_", [SC.EQUAL]: "+",
+  [SC.LBRACKET]: "{", [SC.RBRACKET]: "}", [SC.BACKSLASH]: "|",
+  [SC.SEMICOLON]: ":", [SC.QUOTE]: "\"",
+  [SC.COMMA]: "<", [SC.PERIOD]: ">", [SC.SLASH]: "?",
+};
 
 // 두벌식 (Dubeolsik / "two-set") Korean jamo positions on a standard
 // US QWERTY keyboard. Used by VirtualKeyboard to render the dual-label
