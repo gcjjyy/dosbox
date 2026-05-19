@@ -13,7 +13,8 @@
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify-wasm": "bash scripts/wasm/verify-wasm.sh"
   },
   "dependencies": {
     "@react-router/node": "7.15.0",
