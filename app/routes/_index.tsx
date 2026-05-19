@@ -152,9 +152,23 @@ export default function Index({ loaderData }: Route.ComponentProps) {
           </div>
         )}
       </main>
-      {vkbVisible && (
+      {/* Always mount; toggle visibility via opacity + inert. Keeping the
+          VKB compositor layer alive (even invisible) is load-bearing for
+          Chrome on M-series Macs driving an external monitor: without it,
+          macOS promotes the DOS canvas to a direct-scanout overlay plane,
+          and the resulting display-mode renegotiation flickers the
+          physical monitor. The VKB layer's mere presence disqualifies the
+          canvas from overlay promotion. (`preserveDrawingBuffer: true` in
+          dos-emulator alone wasn't enough — that addresses WebGL backbuffer
+          clearing, not OS-level scanout promotion.) `inert` blocks pointer
+          and focus events to the hidden subtree so stray taps can't reach
+          DOS through invisible keys. */}
+      <div
+        inert={!vkbVisible}
+        style={{ opacity: vkbVisible ? 1 : 0 }}
+      >
         <VirtualKeyboard onKeyDown={onVkbKeyDown} onKeyUp={onVkbKeyUp} />
-      )}
+      </div>
       {showLogin && (
         <LoginModal
           onClose={() => setShowLogin(false)}
