@@ -2,16 +2,19 @@
 //
 // Two layouts behind one component:
 //
-//  - Mobile (viewport ≤640px portrait): 6 rows of ANSI-staggered keys.
-//    Row 1 F-keys, R2-R5 standard QWERTY block (with `\` `;` `'` `,` `.`
-//    in their PC positions and `↑` on R5 right end), R6 util row with the
-//    Sym/ABC toggle immediately left of Space. The legacy 3-page tab bar
+//  - Mobile (viewport ≤640px portrait): 6 rows; every real key is ≥ 1.0
+//    flex (~28px wide on a 390px viewport). R1 F-keys, R2-R5 a stripped-
+//    down QWERTY block (only `.` on R5; `,` `;` `'` `\` ` and the digit-
+//    shifted symbols live on the sym page), R6 util row with Sym/ABC
+//    toggle immediately left of Space. The legacy 3-page tab bar
 //    (ABC/123/FN) is gone; pressing `Sym` swaps R2-R5 to a dedicated
 //    special-character layout (R1 F-keys and R6 util are mode-invariant).
+//    Inverted-T arrow cluster: ↑ at flex 10..11 on R5 stacks directly
+//    above ↓ at flex 10..11 on R6 in both ABC and sym modes.
 //
-//  - Desktop (viewport >640px): the same 6-row full keyboard but with
-//    canonical ANSI stagger (Tab 1.5 / Caps 1.75 / Shift 2.25) and arrows
-//    integrated into rows 5/6 — no more fixed-156px cluster column.
+//  - Desktop (viewport >640px): a 6-row full keyboard with canonical ANSI
+//    stagger (Tab 1.5 / Caps 1.75 / Shift 2.25) and arrows integrated into
+//    rows 5/6 — no fixed-156px cluster column.
 //
 // Letter keys always show two labels: English in the upper-left corner,
 // 두벌식 jamo (from HANGUL_LABELS) in the lower-right corner. Scancodes
@@ -123,57 +126,63 @@ const DESKTOP_ROWS: KeyDef[][] = [
   ],
 ];
 
-// Mobile portrait layouts. All rows sum to flex 12. Stagger via differential
-// left-modifier widths: Tab 1.5 / Caps 2 / ↑Sh 2.5 → Q at 1.5, A at 2.0,
-// Z at 2.5 (each row 0.5 right of the previous). Inverted-T arrow:
-// ↑ on R5 ends at flex offset 11; ↓ on util row R6 sits at same offset.
+// Mobile portrait layouts. All rows sum to flex 12. Every real key is ≥ 1.0
+// flex (~28px wide on a 390px viewport) — no sub-unit keys, which were the
+// "too narrow to hit" 0.5/0.75 keys the user complained about. Modifier
+// widths are 2.0 (Tab/Shift/BS) or 1.5 (Caps/RET) — wide enough for labels
+// but no longer dominating the row.
+//
+// True inverted-T arrow alignment is preserved:
+//   ABC R5 ↑ sits at flex offset 10..11 (between . and / on the right edge);
+//   util R6 ↓ sits at flex offset 10..11 (between ← and →).
+// To make room for that exact placement, comma moves to the sym page —
+// it lives there alongside ? and the other punctuation we shifted off the
+// main letter rows (`, \, ;, ', and the leading grave on R2).
 const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
   abc: [
-    // R1: F1..F12 (12)
+    // R1: F1..F12 (12 × 1.0 = 12)
     [
       { code: SC.F1, label: "F1" }, { code: SC.F2, label: "F2" }, { code: SC.F3, label: "F3" },
       { code: SC.F4, label: "F4" }, { code: SC.F5, label: "F5" }, { code: SC.F6, label: "F6" },
       { code: SC.F7, label: "F7" }, { code: SC.F8, label: "F8" }, { code: SC.F9, label: "F9" },
       { code: SC.F10, label: "F10" }, { code: SC.F11, label: "F11" }, { code: SC.F12, label: "F12" },
     ],
-    // R2: ` 1..0 BS  (1 + 10 + 1 = 12)
+    // R2: 1..0 BS  (10 × 1.0 + 2.0 = 12). Grave moves to sym page.
     [
-      { code: SC.GRAVE, label: "`" },
       { code: SC.D1, label: "1" }, { code: SC.D2, label: "2" }, { code: SC.D3, label: "3" },
       { code: SC.D4, label: "4" }, { code: SC.D5, label: "5" }, { code: SC.D6, label: "6" },
       { code: SC.D7, label: "7" }, { code: SC.D8, label: "8" }, { code: SC.D9, label: "9" },
       { code: SC.D0, label: "0" },
-      { code: SC.BS, label: "BS" },
+      { code: SC.BS, label: "BS", flex: 2 },
     ],
-    // R3: Tab Q..P \  (1.5 + 10 + 0.5 = 12)
+    // R3: Tab Q..P  (2.0 + 10 × 1.0 = 12). Backslash moves to sym page.
     [
-      { code: SC.TAB, label: "Tab", flex: 1.5 },
+      { code: SC.TAB, label: "Tab", flex: 2 },
       { code: SC.Q, label: "Q" }, { code: SC.W, label: "W" }, { code: SC.E, label: "E" },
       { code: SC.R, label: "R" }, { code: SC.T, label: "T" }, { code: SC.Y, label: "Y" },
       { code: SC.U, label: "U" }, { code: SC.I, label: "I" }, { code: SC.O, label: "O" },
       { code: SC.P, label: "P" },
-      { code: SC.BACKSLASH, label: "\\", flex: 0.5 },
     ],
-    // R4: Caps A..L ; '  (2 + 9 + 0.5 + 0.5 = 12)
+    // R4: Caps A..L RET  (1.5 + 9 × 1.0 + 1.5 = 12). ;/' move to sym page.
     [
-      { code: SC.CAPSLOCK, label: "Caps", flex: 2 },
+      { code: SC.CAPSLOCK, label: "Caps", flex: 1.5 },
       { code: SC.A, label: "A" }, { code: SC.S, label: "S" }, { code: SC.D, label: "D" },
       { code: SC.F, label: "F" }, { code: SC.G, label: "G" }, { code: SC.H, label: "H" },
       { code: SC.J, label: "J" }, { code: SC.K, label: "K" }, { code: SC.L, label: "L" },
-      { code: SC.SEMICOLON, label: ";", flex: 0.5 },
-      { code: SC.QUOTE, label: "'", flex: 0.5 },
+      { code: SC.ENTER, label: "RET", flex: 1.5 },
     ],
-    // R5: ↑Sh Z..M , . ↑ RET  (2.5 + 7 + 0.5 + 0.5 + 0.75 + 0.75 = 12)
-    // ↑ width 0.75 == R6 ↓ width, both starting at flex offset 10.5 → true inverted-T.
+    // R5: ↑Sh Z..M . ↑ /  (2.0 + 7 × 1.0 + 1.0 + 1.0 + 1.0 = 12)
+    // ↑ at flex 10..11 — TRUE inverted-T with ↓ at flex 10..11 on R6.
+    // / fills the right edge (under R6's →) — useful for DOS switches.
+    // Comma moves to sym R5 so this row keeps T-alignment and uniform widths.
     [
-      { code: SC.SHIFT, label: "↑Sh", flex: 2.5, modifier: true },
+      { code: SC.SHIFT, label: "↑Sh", flex: 2, modifier: true },
       { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
       { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
       { code: SC.M, label: "M" },
-      { code: SC.COMMA, label: ",", flex: 0.5 },
-      { code: SC.PERIOD, label: ".", flex: 0.5 },
-      { code: SC.UP, label: "↑", flex: 0.75 },
-      { code: SC.ENTER, label: "RET", flex: 0.75 },
+      { code: SC.PERIOD, label: "." },
+      { code: SC.UP, label: "↑" },
+      { code: SC.SLASH, label: "/" },
     ],
   ],
   sym: [
@@ -184,10 +193,9 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.F7, label: "F7" }, { code: SC.F8, label: "F8" }, { code: SC.F9, label: "F9" },
       { code: SC.F10, label: "F10" }, { code: SC.F11, label: "F11" }, { code: SC.F12, label: "F12" },
     ],
-    // R2: ~ ! @ # $ % ^ & * ( ) BS  (1×11 + 1 = 12).
+    // R2: ! @ # $ % ^ & * ( ) BS  (10 × 1.0 + 2.0 = 12).
     // symShift wraps the keypress in SHIFT down/up so DOS sees the shifted scancode.
     [
-      { code: SC.GRAVE, label: "~", symShift: true },
       { code: SC.D1, label: "!", symShift: true },
       { code: SC.D2, label: "@", symShift: true },
       { code: SC.D3, label: "#", symShift: true },
@@ -198,62 +206,66 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.D8, label: "*", symShift: true },
       { code: SC.D9, label: "(", symShift: true },
       { code: SC.D0, label: ")", symShift: true },
-      { code: SC.BS, label: "BS" },
+      { code: SC.BS, label: "BS", flex: 2 },
     ],
-    // R3: Tab { } [ ] - = + _ < > spacer  (1.5 + 10 + 0.5 = 12)
+    // R3: Tab { } [ ] - _ = + < >  (2.0 + 10 × 1.0 = 12)
     [
-      { code: SC.TAB, label: "Tab", flex: 1.5 },
+      { code: SC.TAB, label: "Tab", flex: 2 },
       { code: SC.LBRACKET, label: "{", symShift: true },
       { code: SC.RBRACKET, label: "}", symShift: true },
       { code: SC.LBRACKET, label: "[" },
       { code: SC.RBRACKET, label: "]" },
       { code: SC.MINUS, label: "-" },
+      { code: SC.MINUS, label: "_", symShift: true },
       { code: SC.EQUAL, label: "=" },
       { code: SC.EQUAL, label: "+", symShift: true },
-      { code: SC.MINUS, label: "_", symShift: true },
       { code: SC.COMMA, label: "<", symShift: true },
       { code: SC.PERIOD, label: ">", symShift: true },
-      { spacer: true, flex: 0.5 },
     ],
-    // R4: spacer(2) : " ? / \ , . ; ' |  (2 + 10 = 12)
+    // R4: Caps ` ~ ; ' : " \ | / RET  (1.5 + 9 × 1.0 + 1.5 = 12)
     [
-      { spacer: true, flex: 2 },
-      { code: SC.SEMICOLON, label: ":", symShift: true },
-      { code: SC.QUOTE, label: "\"", symShift: true },
-      { code: SC.SLASH, label: "?", symShift: true },
-      { code: SC.SLASH, label: "/" },
-      { code: SC.BACKSLASH, label: "\\" },
-      { code: SC.COMMA, label: "," },
-      { code: SC.PERIOD, label: "." },
+      { code: SC.CAPSLOCK, label: "Caps", flex: 1.5 },
+      { code: SC.GRAVE, label: "`" },
+      { code: SC.GRAVE, label: "~", symShift: true },
       { code: SC.SEMICOLON, label: ";" },
       { code: SC.QUOTE, label: "'" },
+      { code: SC.SEMICOLON, label: ":", symShift: true },
+      { code: SC.QUOTE, label: "\"", symShift: true },
+      { code: SC.BACKSLASH, label: "\\" },
       { code: SC.BACKSLASH, label: "|", symShift: true },
+      { code: SC.SLASH, label: "/" },
+      { code: SC.ENTER, label: "RET", flex: 1.5 },
     ],
-    // R5: ↑Sh spacer(8) ↑ RET  (2.5 + 8 + 0.75 + 0.75 = 12)
-    // ↑/RET widths match abc R5 so toggling between modes keeps the
-    // inverted-T cluster at exactly the same screen position.
+    // R5: ↑Sh , . spacer(6) ↑ ?  (2.0 + 1 + 1 + 6 + 1 + 1 = 12)
+    // ↑ at flex 10..11 matches ABC R5 and util R6 ↓ — same inverted-T anchor
+    // across both modes so switching pages doesn't move the arrow. Comma and
+    // period sit on the left so muscle memory from ABC carries over. The
+    // right-edge `?` mirrors ABC R5's `/` slot — both are SLASH variants.
     [
-      { code: SC.SHIFT, label: "↑Sh", flex: 2.5, modifier: true },
-      { spacer: true, flex: 8 },
-      { code: SC.UP, label: "↑", flex: 0.75 },
-      { code: SC.ENTER, label: "RET", flex: 0.75 },
+      { code: SC.SHIFT, label: "↑Sh", flex: 2, modifier: true },
+      { code: SC.COMMA, label: "," },
+      { code: SC.PERIOD, label: "." },
+      { spacer: true, flex: 6 },
+      { code: SC.UP, label: "↑" },
+      { code: SC.SLASH, label: "?", symShift: true },
     ],
   ],
 };
 
 // Always-visible bottom row on every mobile page.
-// Esc Ctl Alt Sym Space ← ↓ →  (1+1+1+1+5.75+0.75+0.75+0.75 = 12).
-// ↓ ends at flex 11 → aligns with ↑ on R5. The 4th cell (Sym) swaps to
-// "ABC" label when on the sym page; renderer handles via role="symToggle".
+// Esc Ctl Alt Sym Space ← ↓ →  (1+1+1+1+5+1+1+1 = 12).
+// ↓ at flex 10..11 → exact center-on-center alignment with ↑ on R5 of both
+// pages. The 4th cell (Sym) swaps its label to "ABC" when on the sym page;
+// renderer handles via role="symToggle".
 const MOBILE_UTIL_ROW: KeyDef[] = [
   { code: SC.ESC, label: "Esc" },
   { code: SC.CTRL, label: "Ctrl", modifier: true },
   { code: SC.ALT, label: "Alt", modifier: true },
   { code: -1, label: "Sym", role: "symToggle" },
-  { code: SC.SPACE, label: "Space", flex: 5.75 },
-  { code: SC.LEFT, label: "←", flex: 0.75 },
-  { code: SC.DOWN, label: "↓", flex: 0.75 },
-  { code: SC.RIGHT, label: "→", flex: 0.75 },
+  { code: SC.SPACE, label: "Space", flex: 5 },
+  { code: SC.LEFT, label: "←" },
+  { code: SC.DOWN, label: "↓" },
+  { code: SC.RIGHT, label: "→" },
 ];
 
 // Hook: subscribes to (max-width: 640px) media query. Returns false
