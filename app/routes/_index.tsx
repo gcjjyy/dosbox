@@ -152,20 +152,25 @@ export default function Index({ loaderData }: Route.ComponentProps) {
           </div>
         )}
       </main>
-      {/* Always mount; toggle visibility via opacity + inert. Keeping the
-          VKB compositor layer alive (even invisible) is load-bearing for
-          Chrome on M-series Macs driving an external monitor: without it,
-          macOS promotes the DOS canvas to a direct-scanout overlay plane,
+      {/* Always mount; hidden state uses opacity 0.01 (NOT 0) + inert.
+          Load-bearing for Chrome on M-series Macs driving an external
+          monitor: macOS otherwise promotes the DOS canvas to a direct-
+          scanout overlay plane at certain canvas-to-window size ratios,
           and the resulting display-mode renegotiation flickers the
-          physical monitor. The VKB layer's mere presence disqualifies the
-          canvas from overlay promotion. (`preserveDrawingBuffer: true` in
-          dos-emulator alone wasn't enough — that addresses WebGL backbuffer
-          clearing, not OS-level scanout promotion.) `inert` blocks pointer
-          and focus events to the hidden subtree so stray taps can't reach
-          DOS through invisible keys. */}
+          physical monitor. A composited VKB layer above the canvas
+          disqualifies the canvas from overlay promotion.
+          0.01 (not 0) is critical: Chrome skips painting opacity-0
+          subtrees entirely, so the compositor layer effectively
+          disappears — equivalent to not mounting at all. 1% alpha on a
+          dark element over a dark background is below visual threshold
+          but keeps Chrome painting the layer. `inert` blocks pointer
+          and focus events so stray taps can't reach DOS through the
+          invisible keys. (`preserveDrawingBuffer: true` in dos-emulator
+          addresses WebGL backbuffer clearing — separate WebGL-spec
+          hygiene, not the root cause here.) */}
       <div
         inert={!vkbVisible}
-        style={{ opacity: vkbVisible ? 1 : 0 }}
+        style={{ opacity: vkbVisible ? 1 : 0.01 }}
       >
         <VirtualKeyboard onKeyDown={onVkbKeyDown} onKeyUp={onVkbKeyUp} />
       </div>
