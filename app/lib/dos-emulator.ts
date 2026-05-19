@@ -185,10 +185,20 @@ export class DosEmulator {
   constructor(opts: DosEmulatorOpts) {
     this.opts = opts;
     this.canvas = opts.canvas;
+    // preserveDrawingBuffer: true is load-bearing for Chrome on macOS.
+    // With it false (the WebGL default), the browser clears the canvas
+    // backbuffer after each compositor read. Our RAF only fires when the
+    // emulator pushes a new frame, so any display vsync without a fresh
+    // emulator frame (DOS modes run 60-70 Hz, occasional CPU dips) shows a
+    // cleared (black) canvas → whole-window flicker. Safari masks this with
+    // a different compositor path. When the virtual keyboard is mounted
+    // its fixed+transform layer accidentally promotes the canvas to its own
+    // composited layer, which also masked the bug — but the underlying
+    // race exists in both states.
     const gl = this.canvas.getContext("webgl", {
       alpha: false,
       antialias: false,
-      preserveDrawingBuffer: false,
+      preserveDrawingBuffer: true,
     });
     if (!gl) throw new Error("webgl context unavailable");
     this.gl = gl;
