@@ -333,7 +333,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
         <div
           key={id}
           className="vkb-spacer"
-          style={{ flexGrow: k.flex ?? 1 }}
+          style={{ gridColumn: `span ${Math.round((k.flex ?? 1) * 4)}` }}
           aria-hidden="true"
         />
       );
@@ -349,7 +349,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
           type="button"
           tabIndex={-1}
           className="vkb-key vkb-key--sym"
-          style={{ flexGrow: k.flex ?? 1 }}
+          style={{ gridColumn: `span ${Math.round((k.flex ?? 1) * 4)}` }}
           onPointerDown={(e) => {
             e.preventDefault();
             setPage(isSym ? "abc" : "sym");
@@ -385,7 +385,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
           (isShiftKey && shiftLatched ? " vkb-key--latched" : "") +
           (showShiftedGlyph ? " vkb-key--shifted-glyph" : "")
         }
-        style={{ flexGrow: k.flex ?? 1 }}
+        style={{ gridColumn: `span ${Math.round((k.flex ?? 1) * 4)}` }}
         onPointerDown={(e) => {
           e.preventDefault();
           handleDown(id, k.code, isMod, !!k.symShift);

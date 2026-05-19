@@ -434,12 +434,19 @@ html { color-scheme: dark; }
   gap: 5px;
 }
 
-.vkb-row { display: flex; gap: 5px; }
-.vkb-spacer { flex: 1 1 0; min-width: 0; }
+/* Grid-based row so cells with different flex weights line up *across rows*
+   regardless of how many gaps the row has. Each cell sets `grid-column:
+   span <flex * 4>` via inline style. Desktop rows sum to 15.25 → 61 cols;
+   mobile rows sum to 12 → 48 cols (overridden in the phone @media block). */
+.vkb-row {
+  display: grid;
+  grid-template-columns: repeat(61, minmax(0, 1fr));
+  gap: 5px;
+}
+.vkb-spacer { min-width: 0; }
 
 .vkb-key {
   position: relative;
-  flex: 1 1 0;
   min-width: 0;
   min-height: 48px;     /* matches natural cell width at vkb max-width 820 — keeps letter keys ≈1:1 */
   padding: 6px 0;
@@ -546,8 +553,10 @@ html { color-scheme: dark; }
     border-right: 0;
     border-bottom: 0;
   }
-  .vkb-row { gap: 4px; }
-  .vkb-row:has(> .vkb-spacer:only-child) { min-height: 40px; }
+  .vkb-row {
+    gap: 4px;
+    grid-template-columns: repeat(48, minmax(0, 1fr));
+  }
   .vkb-key {
     min-height: 40px;
     font-size: 12px;
