@@ -2,24 +2,32 @@
 //
 // Two layouts behind one component:
 //
-//  - Mobile (viewport ≤640px): tab bar (ABC / 123 / FN, evenly
-//    distributed) on top, active-page rows in the middle, always-
-//    visible util row at the bottom. Cells uniformly 10% of width;
-//    arrows live on the 123 page as an inverted-T occupying R2 col 9
-//    and R3 cols 8-10.
+//  - Mobile (viewport ≤640px portrait): 6 rows of ANSI-staggered keys.
+//    Row 1 F-keys, R2-R5 standard QWERTY block (with `\` `;` `'` `,` `.`
+//    in their PC positions and `↑` on R5 right end), R6 util row with the
+//    Sym/ABC toggle immediately left of Space. The legacy 3-page tab bar
+//    (ABC/123/FN) is gone; pressing `Sym` swaps R2-R5 to a dedicated
+//    special-character layout (R1 F-keys and R6 util are mode-invariant).
 //
-//  - Desktop (viewport >640px): the original 6-row full keyboard,
-//    with CapsLock filling the Row 4 left spacer.
+//  - Desktop (viewport >640px): the same 6-row full keyboard but with
+//    canonical ANSI stagger (Tab 1.5 / Caps 1.75 / Shift 2.25) and arrows
+//    integrated into rows 5/6 — no more fixed-156px cluster column.
 //
-// Letter keys always show two labels: English in the upper-left
-// corner, 두벌식 jamo (from HANGUL_LABELS) in the lower-right corner.
-// Scancodes are unchanged — DOS still receives A/B/C etc., so any
-// DOS-side IME (e.g. 한글 도깨비) controls the actual input mode.
+// Letter keys always show two labels: English in the upper-left corner,
+// 두벌식 jamo (from HANGUL_LABELS) in the lower-right corner. Scancodes
+// are unchanged — DOS still receives A/B/C etc., so any DOS-side IME
+// (e.g. 한글 도깨비) controls the actual input mode.
 //
-// Sticky-once modifier semantics (Shift/Ctrl/Alt latch, release
-// after the next non-modifier key) preserved from the old keyboard.
-// CapsLock is a *normal momentary key*, not a sticky modifier —
-// DOS tracks its toggled state internally.
+// Sticky-once modifier semantics (Shift/Ctrl/Alt latch, release after the
+// next non-modifier key) preserved from the old keyboard. When Shift is
+// latched, non-letter labels swap to their shifted glyph (1→!, [→{ etc.)
+// via SHIFT_LABELS, and the Shift key cells gain an amber latched style.
+// CapsLock is a *normal momentary key*, not a sticky modifier — DOS
+// tracks its toggled state internally.
+//
+// Mobile Sym-page keys carry `symShift: true` on their KeyDef. The press
+// handler wraps the emitted scancode in a synthetic SHIFT down/up so DOS
+// sees the shifted scancode (e.g. tapping `!` emits SHIFT + D1 + SHIFT_up).
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { HANGUL_LABELS, SC, SHIFT_LABELS } from "../lib/dos-keymap";
