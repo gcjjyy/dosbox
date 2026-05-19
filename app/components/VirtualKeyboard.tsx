@@ -36,10 +36,17 @@ type KeyDef =
       label: string;
       flex?: number;
       modifier?: boolean;
+      /** When true, the press handler wraps the emitted scancode in a
+       *  synthetic SHIFT down/up so DOS sees the shifted scancode. Used
+       *  by mobile Sym-page glyphs like `!` `{` etc. */
+      symShift?: boolean;
+      /** Special render role: "symToggle" — the Sym/ABC mobile toggle.
+       *  Renderer swaps label + handler; `code` is unused. */
+      role?: "symToggle";
       spacer?: false;
     };
 
-type Page = "abc" | "123" | "fn";
+type Page = "abc" | "sym";
 
 // Desktop full layout. Stagger: Tab 1.5 / Caps 1.75 / Shift 2.25 produces
 // canonical ANSI offsets (A between Q-W; Z between A-S). Arrows are
@@ -107,96 +114,136 @@ const DESKTOP_ROWS: KeyDef[][] = [
   ],
 ];
 
-// ── Mobile layouts ────────────────────────────────────────────────
-// All rows are 10 flex units. Spacers fill unused cells.
+// Mobile portrait layouts. All rows sum to flex 12. Stagger via differential
+// left-modifier widths: Tab 1.5 / Caps 2 / ↑Sh 2.5 → Q at 1.5, A at 2.0,
+// Z at 2.5 (each row 0.5 right of the previous). Inverted-T arrow:
+// ↑ on R5 ends at flex offset 11; ↓ on util row R6 sits at same offset.
 const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
   abc: [
-    // Q W E R T Y U I O P (10)
+    // R1: F1..F12 (12)
     [
-      { code: SC.Q, label: "Q" }, { code: SC.W, label: "W" }, { code: SC.E, label: "E" },
-      { code: SC.R, label: "R" }, { code: SC.T, label: "T" }, { code: SC.Y, label: "Y" },
-      { code: SC.U, label: "U" }, { code: SC.I, label: "I" }, { code: SC.O, label: "O" },
-      { code: SC.P, label: "P" },
+      { code: SC.F1, label: "F1" }, { code: SC.F2, label: "F2" }, { code: SC.F3, label: "F3" },
+      { code: SC.F4, label: "F4" }, { code: SC.F5, label: "F5" }, { code: SC.F6, label: "F6" },
+      { code: SC.F7, label: "F7" }, { code: SC.F8, label: "F8" }, { code: SC.F9, label: "F9" },
+      { code: SC.F10, label: "F10" }, { code: SC.F11, label: "F11" }, { code: SC.F12, label: "F12" },
     ],
-    // ½ spacer + A..L + ½ spacer (0.5 + 9 + 0.5 = 10)
+    // R2: ` 1..0 BS  (1 + 10 + 1 = 12)
     [
-      { spacer: true, flex: 0.5 },
-      { code: SC.A, label: "A" }, { code: SC.S, label: "S" }, { code: SC.D, label: "D" },
-      { code: SC.F, label: "F" }, { code: SC.G, label: "G" }, { code: SC.H, label: "H" },
-      { code: SC.J, label: "J" }, { code: SC.K, label: "K" }, { code: SC.L, label: "L" },
-      { spacer: true, flex: 0.5 },
-    ],
-    // Caps + Z..M + ½ spacer + Tab + ½ spacer (1 + 7 + 0.5 + 1 + 0.5 = 10)
-    [
-      { code: SC.CAPSLOCK, label: "Caps", modifier: false },
-      { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
-      { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
-      { code: SC.M, label: "M" },
-      { spacer: true, flex: 0.5 },
-      { code: SC.TAB, label: "Tab" },
-      { spacer: true, flex: 0.5 },
-    ],
-  ],
-  "123": [
-    // 1..0 (10)
-    [
+      { code: SC.GRAVE, label: "`" },
       { code: SC.D1, label: "1" }, { code: SC.D2, label: "2" }, { code: SC.D3, label: "3" },
       { code: SC.D4, label: "4" }, { code: SC.D5, label: "5" }, { code: SC.D6, label: "6" },
       { code: SC.D7, label: "7" }, { code: SC.D8, label: "8" }, { code: SC.D9, label: "9" },
       { code: SC.D0, label: "0" },
+      { code: SC.BS, label: "BS" },
     ],
-    // - = [ ] \ ; ' + spacer + ↑ + spacer (7 + 1 + 1 + 1 = 10)
+    // R3: Tab Q..P \  (1.5 + 10 + 0.5 = 12)
     [
-      { code: SC.MINUS, label: "-" }, { code: SC.EQUAL, label: "=" },
-      { code: SC.LBRACKET, label: "[" }, { code: SC.RBRACKET, label: "]" },
-      { code: SC.BACKSLASH, label: "\\" },
-      { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
-      { spacer: true },
-      { code: SC.UP, label: "↑" },
-      { spacer: true },
+      { code: SC.TAB, label: "Tab", flex: 1.5 },
+      { code: SC.Q, label: "Q" }, { code: SC.W, label: "W" }, { code: SC.E, label: "E" },
+      { code: SC.R, label: "R" }, { code: SC.T, label: "T" }, { code: SC.Y, label: "Y" },
+      { code: SC.U, label: "U" }, { code: SC.I, label: "I" }, { code: SC.O, label: "O" },
+      { code: SC.P, label: "P" },
+      { code: SC.BACKSLASH, label: "\\", flex: 0.5 },
     ],
-    // , . / + 4 spacers + ← ↓ → (3 + 4 + 3 = 10)
+    // R4: Caps A..L ; '  (2 + 9 + 0.5 + 0.5 = 12)
     [
-      { code: SC.COMMA, label: "," }, { code: SC.PERIOD, label: "." }, { code: SC.SLASH, label: "/" },
-      { spacer: true }, { spacer: true }, { spacer: true }, { spacer: true },
-      { code: SC.LEFT, label: "←" },
-      { code: SC.DOWN, label: "↓" },
-      { code: SC.RIGHT, label: "→" },
+      { code: SC.CAPSLOCK, label: "Caps", flex: 2 },
+      { code: SC.A, label: "A" }, { code: SC.S, label: "S" }, { code: SC.D, label: "D" },
+      { code: SC.F, label: "F" }, { code: SC.G, label: "G" }, { code: SC.H, label: "H" },
+      { code: SC.J, label: "J" }, { code: SC.K, label: "K" }, { code: SC.L, label: "L" },
+      { code: SC.SEMICOLON, label: ";", flex: 0.5 },
+      { code: SC.QUOTE, label: "'", flex: 0.5 },
+    ],
+    // R5: ↑Sh Z..M , . ↑ RET  (2.5 + 7 + 0.5 + 0.5 + 0.5 + 1 = 12)
+    // ↑ ends at flex 11; util R6 ↓ aligns to that.
+    [
+      { code: SC.SHIFT, label: "↑Sh", flex: 2.5, modifier: true },
+      { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
+      { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
+      { code: SC.M, label: "M" },
+      { code: SC.COMMA, label: ",", flex: 0.5 },
+      { code: SC.PERIOD, label: ".", flex: 0.5 },
+      { code: SC.UP, label: "↑", flex: 0.5 },
+      { code: SC.ENTER, label: "RET" },
     ],
   ],
-  fn: [
-    // 2-wide spacer + F1..F6 + 2-wide spacer (2 + 6 + 2 = 10)
+  sym: [
+    // R1 (mode-invariant copy of abc R1)
     [
-      { spacer: true, flex: 2 },
       { code: SC.F1, label: "F1" }, { code: SC.F2, label: "F2" }, { code: SC.F3, label: "F3" },
       { code: SC.F4, label: "F4" }, { code: SC.F5, label: "F5" }, { code: SC.F6, label: "F6" },
-      { spacer: true, flex: 2 },
-    ],
-    // 2-wide spacer + F7..F12 + 2-wide spacer
-    [
-      { spacer: true, flex: 2 },
       { code: SC.F7, label: "F7" }, { code: SC.F8, label: "F8" }, { code: SC.F9, label: "F9" },
       { code: SC.F10, label: "F10" }, { code: SC.F11, label: "F11" }, { code: SC.F12, label: "F12" },
-      { spacer: true, flex: 2 },
     ],
-    // Empty spacer row so fn page totals 3 rows (abc/123 parity) and the
-    // util row stays at the same y across all pages.
+    // R2: ~ ! @ # $ % ^ & * ( ) BS  (1×11 + 1 = 12).
+    // symShift wraps the keypress in SHIFT down/up so DOS sees the shifted scancode.
     [
-      { spacer: true, flex: 10 },
+      { code: SC.GRAVE, label: "~", symShift: true },
+      { code: SC.D1, label: "!", symShift: true },
+      { code: SC.D2, label: "@", symShift: true },
+      { code: SC.D3, label: "#", symShift: true },
+      { code: SC.D4, label: "$", symShift: true },
+      { code: SC.D5, label: "%", symShift: true },
+      { code: SC.D6, label: "^", symShift: true },
+      { code: SC.D7, label: "&", symShift: true },
+      { code: SC.D8, label: "*", symShift: true },
+      { code: SC.D9, label: "(", symShift: true },
+      { code: SC.D0, label: ")", symShift: true },
+      { code: SC.BS, label: "BS" },
+    ],
+    // R3: Tab { } [ ] - = + _ < > spacer  (1.5 + 10 + 0.5 = 12)
+    [
+      { code: SC.TAB, label: "Tab", flex: 1.5 },
+      { code: SC.LBRACKET, label: "{", symShift: true },
+      { code: SC.RBRACKET, label: "}", symShift: true },
+      { code: SC.LBRACKET, label: "[" },
+      { code: SC.RBRACKET, label: "]" },
+      { code: SC.MINUS, label: "-" },
+      { code: SC.EQUAL, label: "=" },
+      { code: SC.EQUAL, label: "+", symShift: true },
+      { code: SC.MINUS, label: "_", symShift: true },
+      { code: SC.COMMA, label: "<", symShift: true },
+      { code: SC.PERIOD, label: ">", symShift: true },
+      { spacer: true, flex: 0.5 },
+    ],
+    // R4: spacer(2) : " ? / \ , . ; ' |  (2 + 10 = 12)
+    [
+      { spacer: true, flex: 2 },
+      { code: SC.SEMICOLON, label: ":", symShift: true },
+      { code: SC.QUOTE, label: "\"", symShift: true },
+      { code: SC.SLASH, label: "?", symShift: true },
+      { code: SC.SLASH, label: "/" },
+      { code: SC.BACKSLASH, label: "\\" },
+      { code: SC.COMMA, label: "," },
+      { code: SC.PERIOD, label: "." },
+      { code: SC.SEMICOLON, label: ";" },
+      { code: SC.QUOTE, label: "'" },
+      { code: SC.BACKSLASH, label: "|", symShift: true },
+    ],
+    // R5: ↑Sh spacer(8) ↑ RET  (2.5 + 8 + 0.5 + 1 = 12)
+    // ↑ at flex 11 (same x as abc R5) — inverted-T continuity across modes.
+    [
+      { code: SC.SHIFT, label: "↑Sh", flex: 2.5, modifier: true },
+      { spacer: true, flex: 8 },
+      { code: SC.UP, label: "↑", flex: 0.5 },
+      { code: SC.ENTER, label: "RET" },
     ],
   ],
 };
 
 // Always-visible bottom row on every mobile page.
-// Esc Ctrl Alt Shift + Space (4-wide) + BS RET (4 mod + 4 space + 2 narrow = 10)
+// Esc Ctl Alt Sym Space ← ↓ →  (1+1+1+1+5.75+0.75+0.75+0.75 = 12).
+// ↓ ends at flex 11 → aligns with ↑ on R5. The 4th cell (Sym) swaps to
+// "ABC" label when on the sym page; renderer handles via role="symToggle".
 const MOBILE_UTIL_ROW: KeyDef[] = [
-  { code: SC.ESC, label: "Esc", modifier: false },
+  { code: SC.ESC, label: "Esc" },
   { code: SC.CTRL, label: "Ctrl", modifier: true },
   { code: SC.ALT, label: "Alt", modifier: true },
-  { code: SC.SHIFT, label: "Shift", modifier: true },
-  { code: SC.SPACE, label: "Space", flex: 4 },
-  { code: SC.BS, label: "BS" },
-  { code: SC.ENTER, label: "RET" },
+  { code: -1, label: "Sym", role: "symToggle" },
+  { code: SC.SPACE, label: "Space", flex: 5.75 },
+  { code: SC.LEFT, label: "←", flex: 0.75 },
+  { code: SC.DOWN, label: "↓", flex: 0.75 },
+  { code: SC.RIGHT, label: "→", flex: 0.75 },
 ];
 
 // Hook: subscribes to (max-width: 640px) media query. Returns false
