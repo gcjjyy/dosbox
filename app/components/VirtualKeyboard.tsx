@@ -41,8 +41,10 @@ type KeyDef =
 
 type Page = "abc" | "123" | "fn";
 
-// ── Desktop full layout (original 6 rows + CapsLock + BS/RET) ────
-// All main rows total flex = 15.25 so letter-cell widths match.
+// Desktop full layout. Stagger: Tab 1.5 / Caps 1.75 / Shift 2.25 produces
+// canonical ANSI offsets (A between Q-W; Z between A-S). Arrows are
+// integrated into R5/R6 so the inverted-T ↑/↓ alignment survives any
+// viewport width. All rows sum to flex 15.25.
 const DESKTOP_ROWS: KeyDef[][] = [
   // Row 1: Esc + F1..F12 (3.25 + 12 = 15.25)
   [
@@ -52,64 +54,58 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.F7, label: "F7" }, { code: SC.F8, label: "F8" }, { code: SC.F9, label: "F9" },
     { code: SC.F10, label: "F10" }, { code: SC.F11, label: "F11" }, { code: SC.F12, label: "F12" },
   ],
-  // Row 2: digits + BS (12 + 3.25 = 15.25)
+  // Row 2: ` 1..0 - = BS  (1 + 10 + 1 + 1 + 2.25 = 15.25)
   [
+    { code: SC.GRAVE, label: "`" },
     { code: SC.D1, label: "1" }, { code: SC.D2, label: "2" }, { code: SC.D3, label: "3" },
     { code: SC.D4, label: "4" }, { code: SC.D5, label: "5" }, { code: SC.D6, label: "6" },
     { code: SC.D7, label: "7" }, { code: SC.D8, label: "8" }, { code: SC.D9, label: "9" },
-    { code: SC.D0, label: "0" }, { code: SC.MINUS, label: "-" }, { code: SC.EQUAL, label: "=" },
-    { code: SC.BS, label: "BS", flex: 3.25 },
+    { code: SC.D0, label: "0" },
+    { code: SC.MINUS, label: "-" }, { code: SC.EQUAL, label: "=" },
+    { code: SC.BS, label: "BS", flex: 2.25 },
   ],
-  // Row 3: Tab + Q..P + brackets + backslash (2.25 + 13 = 15.25)
+  // Row 3: Tab Q..P [ ] \  (1.5 + 10 + 1 + 1 + 1.75 = 15.25)
   [
-    { code: SC.TAB, label: "Tab", flex: 2.25 },
+    { code: SC.TAB, label: "Tab", flex: 1.5 },
     { code: SC.Q, label: "Q" }, { code: SC.W, label: "W" }, { code: SC.E, label: "E" },
     { code: SC.R, label: "R" }, { code: SC.T, label: "T" }, { code: SC.Y, label: "Y" },
     { code: SC.U, label: "U" }, { code: SC.I, label: "I" }, { code: SC.O, label: "O" },
     { code: SC.P, label: "P" },
     { code: SC.LBRACKET, label: "[" }, { code: SC.RBRACKET, label: "]" },
-    { code: SC.BACKSLASH, label: "\\" },
+    { code: SC.BACKSLASH, label: "\\", flex: 1.75 },
   ],
-  // Row 4: CapsLock + A..L + ; ' + RET (2 + 11 + 2.25 = 15.25)
-  // CapsLock replaces the old Row 4 left spacer.
+  // Row 4: Caps A..L ; ' RET  (1.75 + 9 + 1 + 1 + 2.5 = 15.25)
   [
-    { code: SC.CAPSLOCK, label: "Caps", flex: 2 },
+    { code: SC.CAPSLOCK, label: "Caps", flex: 1.75 },
     { code: SC.A, label: "A" }, { code: SC.S, label: "S" }, { code: SC.D, label: "D" },
     { code: SC.F, label: "F" }, { code: SC.G, label: "G" }, { code: SC.H, label: "H" },
     { code: SC.J, label: "J" }, { code: SC.K, label: "K" }, { code: SC.L, label: "L" },
     { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
-    { code: SC.ENTER, label: "RET", flex: 2.25 },
+    { code: SC.ENTER, label: "RET", flex: 2.5 },
   ],
-  // Row 5 main: Shift + Z..M + , . / (2.25 + 10 = 12.25, arrow col follows)
+  // Row 5: Sh Z..M , . / ↑ Sh  (2.25 + 7 + 1 + 1 + 1 + 1 + 2 = 15.25)
   [
     { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
     { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
     { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
     { code: SC.M, label: "M" },
     { code: SC.COMMA, label: "," }, { code: SC.PERIOD, label: "." }, { code: SC.SLASH, label: "/" },
+    { code: SC.UP, label: "↑" },
+    { code: SC.SHIFT, label: "Shift", flex: 2, modifier: true },
   ],
-  // Row 6 main: Ctrl Alt Space Alt (1.5 + 1.25 + 8.25 + 1.25 = 12.25, arrow col follows)
+  // Row 6: Ctl Alt Space Alt ← ↓ → Ctl  (1.5+1.5+7+1.5+0.75+0.75+0.75+1.5 = 15.25)
+  // ↓ start = 1.5+1.5+7+1.5+0.75 = 12.25 == R5 ↑ start → inverted-T aligned.
   [
     { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
-    { code: SC.ALT, label: "Alt", flex: 1.25, modifier: true },
-    { code: SC.SPACE, label: "Space", flex: 8.25 },
-    { code: SC.ALT, label: "Alt", flex: 1.25, modifier: true },
+    { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
+    { code: SC.SPACE, label: "Space", flex: 7 },
+    { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
+    { code: SC.LEFT, label: "←", flex: 0.75 },
+    { code: SC.DOWN, label: "↓", flex: 0.75 },
+    { code: SC.RIGHT, label: "→", flex: 0.75 },
+    { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
   ],
 ];
-
-// Fixed-width arrow cluster appended to desktop rows 5 and 6.
-const DESKTOP_ARROW_CLUSTERS: Record<number, KeyDef[]> = {
-  4: [
-    { spacer: true },
-    { code: SC.UP, label: "↑" },
-    { spacer: true },
-  ],
-  5: [
-    { code: SC.LEFT, label: "←" },
-    { code: SC.DOWN, label: "↓" },
-    { code: SC.RIGHT, label: "→" },
-  ],
-};
 
 // ── Mobile layouts ────────────────────────────────────────────────
 // All rows are 10 flex units. Spacers fill unused cells.
@@ -361,22 +357,10 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
     );
   }
 
-  // Desktop: original 6 rows with CapsLock substitution + BS/RET labels.
+  // Desktop: 6 rows of ANSI-staggered keys. Arrows are inline in rows 5/6.
   return (
     <div className="vkb" role="group" aria-label="DOS 가상 키보드">
-      {DESKTOP_ROWS.map((row, ri) => {
-        const arrows = DESKTOP_ARROW_CLUSTERS[ri];
-        return (
-          <div className="vkb-row" key={ri}>
-            {row.map((k, ki) => renderCell(k, `${ri}-${ki}`))}
-            {arrows && (
-              <div className="vkb-arrows-col">
-                {arrows.map((k, ki) => renderCell(k, `${ri}-a${ki}`))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {DESKTOP_ROWS.map((row, ri) => renderRow(row, String(ri)))}
     </div>
   );
 }
