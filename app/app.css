@@ -427,41 +427,7 @@ html { color-scheme: dark; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Mobile-only tab bar (ABC / 123 / FN, evenly distributed).
- * Underline tab style — tabs are intentionally NOT styled like keys
- * (no border/background/radius). Active tab is marked by a 2px accent
- * underline that sits on top of the tabbar's own 1px separator. */
-.vkb-tabbar {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.vkb-tab {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 32px;
-  padding: 6px 0;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: none;
-  color: var(--color-navy-muted);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
-  /* Pull the tab's own border-bottom down so it overlaps the tabbar
-     separator instead of sitting above it. */
-  margin-bottom: -1px;
-}
-.vkb-tab--active {
-  color: var(--color-navy-text);
-  border-bottom-color: var(--color-navy-accent);
-  font-weight: 700;
-}
-/* Mobile page content (between tab bar and util row) */
+/* Mobile page content (between any header and util row). */
 .vkb-content {
   display: flex;
   flex-direction: column;
@@ -470,17 +436,6 @@ html { color-scheme: dark; }
 
 .vkb-row { display: flex; gap: 5px; }
 .vkb-spacer { flex: 1 1 0; min-width: 0; }
-/* A row that contains only a spacer (e.g. FN page padding row) would
-   otherwise collapse to 0 height. Match the key min-height so the
-   util row stays at the same y as on the abc/123 pages. */
-.vkb-row:has(> .vkb-spacer:only-child) { min-height: 48px; }
-/* Fixed-width arrow cluster so ↑ and ↓ share an x position across rows
-   regardless of how their main flex rows distribute. */
-.vkb-arrows-col {
-  flex: 0 0 156px;
-  display: flex;
-  gap: 5px;
-}
 
 .vkb-key {
   position: relative;

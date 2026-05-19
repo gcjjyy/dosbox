@@ -22,7 +22,7 @@
 // DOS tracks its toggled state internally.
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { HANGUL_LABELS, SC } from "../lib/dos-keymap";
+import { HANGUL_LABELS, SC, SHIFT_LABELS } from "../lib/dos-keymap";
 
 export interface VirtualKeyboardProps {
   onKeyDown: (scancode: number) => void;
@@ -273,7 +273,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
   const isMobile = useIsMobile();
 
   const handleDown = useCallback(
-    (id: string, code: number, isModifier: boolean) => {
+    (id: string, code: number, isModifier: boolean, symShift: boolean) => {
       if (isModifier) {
         const mods = stickyModsRef.current;
         if (mods.has(code)) {
@@ -289,6 +289,9 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
       const pressed = pressedRef.current;
       if (pressed.has(id)) return;
       pressed.add(id);
+      // Sym page glyphs (`!` `{` etc.) need SHIFT held around the keypress
+      // so DOS sees the shifted scancode.
+      if (symShift) onKeyDown(SC.SHIFT);
       onKeyDown(code);
       setRender();
     },
@@ -296,12 +299,14 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
   );
 
   const handleUp = useCallback(
-    (id: string, code: number, isModifier: boolean) => {
+    (id: string, code: number, isModifier: boolean, symShift: boolean = false) => {
       if (isModifier) return;
       const pressed = pressedRef.current;
       if (!pressed.has(id)) return;
       pressed.delete(id);
       onKeyUp(code);
+      // Release the synthetic SHIFT emitted by handleDown for symShift keys.
+      if (symShift) onKeyUp(SC.SHIFT);
       const mods = stickyModsRef.current;
       if (mods.size > 0) {
         for (const m of mods) onKeyUp(m);
@@ -323,44 +328,75 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
         />
       );
     }
+
+    // Sym/ABC toggle — swaps mobile page state; does not emit a DOS key.
+    if (k.role === "symToggle") {
+      const isSym = page === "sym";
+      const label = isSym ? "ABC" : "Sym";
+      return (
+        <button
+          key={id}
+          type="button"
+          tabIndex={-1}
+          className="vkb-key vkb-key--sym"
+          style={{ flexGrow: k.flex ?? 1 }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            setPage(isSym ? "abc" : "sym");
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {label}
+        </button>
+      );
+    }
+
     const isMod = !!k.modifier;
     const isPressed = isMod
       ? stickyModsRef.current.has(k.code)
       : pressedRef.current.has(id);
     const hangul = HANGUL_LABELS[k.code];
+    const shiftLatched = stickyModsRef.current.has(SC.SHIFT);
+    const shiftedLabel = shiftLatched ? SHIFT_LABELS[k.code] : undefined;
+    const displayLabel = shiftedLabel ?? k.label;
+    const isShiftKey = k.code === SC.SHIFT;
+    const showShiftedGlyph = !!shiftedLabel && !isMod;
+
     return (
       <button
         key={id}
         type="button"
         tabIndex={-1}
-        aria-pressed={isPressed}
+        aria-pressed={isPressed || (isShiftKey && shiftLatched)}
         className={
           "vkb-key" +
           (isPressed ? " vkb-key--pressed" : "") +
-          (isMod ? " vkb-key--mod" : "")
+          (isMod ? " vkb-key--mod" : "") +
+          (isShiftKey && shiftLatched ? " vkb-key--latched" : "") +
+          (showShiftedGlyph ? " vkb-key--shifted-glyph" : "")
         }
         style={{ flexGrow: k.flex ?? 1 }}
         onPointerDown={(e) => {
           e.preventDefault();
-          handleDown(id, k.code, isMod);
+          handleDown(id, k.code, isMod, !!k.symShift);
         }}
         onPointerUp={(e) => {
           e.preventDefault();
-          handleUp(id, k.code, isMod);
+          handleUp(id, k.code, isMod, !!k.symShift);
         }}
-        onPointerCancel={() => handleUp(id, k.code, isMod)}
+        onPointerCancel={() => handleUp(id, k.code, isMod, !!k.symShift)}
         onPointerLeave={(e) => {
-          if (e.buttons !== 0) handleUp(id, k.code, isMod);
+          if (e.buttons !== 0) handleUp(id, k.code, isMod, !!k.symShift);
         }}
         onContextMenu={(e) => e.preventDefault()}
       >
         {hangul ? (
           <>
-            <span className="vkb-key__en">{k.label}</span>
+            <span className="vkb-key__en">{displayLabel}</span>
             <span className="vkb-key__ko">{hangul}</span>
           </>
         ) : (
-          k.label
+          displayLabel
         )}
       </button>
     );
@@ -377,28 +413,9 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
   if (isMobile) {
     return (
       <div className="vkb" role="group" aria-label="DOS 가상 키보드">
-        <div className="vkb-tabbar">
-          {(["abc", "123", "fn"] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              tabIndex={-1}
-              className={"vkb-tab" + (page === p ? " vkb-tab--active" : "")}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                setPage(p);
-              }}
-              onContextMenu={(e) => e.preventDefault()}
-            >
-              {p === "abc" ? "ABC" : p === "123" ? "123" : "FN"}
-            </button>
-          ))}
-        </div>
-
         <div className="vkb-content">
           {MOBILE_PAGES[page].map((row, ri) => renderRow(row, `${page}-${ri}`))}
         </div>
-
         {renderRow(MOBILE_UTIL_ROW, "util")}
       </div>
     );
