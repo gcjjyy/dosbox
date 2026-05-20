@@ -21,8 +21,16 @@ function runCmd(cmd: string, args: string[], cwd: string): Promise<void> {
 }
 
 const DOSBOX_CONF = [
+  "[dosbox]",
+  "memsize=63",
+  "",
   "[cpu]",
   "cycles=fixed 22500",
+  "",
+  "[dos]",
+  "xms=true",
+  "ems=true",
+  "umb=true",
   "",
   "[autoexec]",
   "@ECHO OFF",
