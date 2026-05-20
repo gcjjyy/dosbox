@@ -31,7 +31,7 @@ const DOSBOX_CONF = [
   "[cpu]",
   "core=auto",
   "cputype=auto",
-  "cycles=80000",
+  "cycles=auto",
   "cycleup=10",
   "cycledown=20",
   "",
