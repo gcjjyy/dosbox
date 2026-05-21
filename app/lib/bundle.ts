@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
 import { DOS_ROOT } from "./dos-paths";
+import { DEFAULT_CYCLES, CYCLES_STEP } from "./cpu-cycles";
 
 function runCmd(cmd: string, args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -23,17 +24,19 @@ function runCmd(cmd: string, args: string[], cwd: string): Promise<void> {
 // Mirrors the native DOSBox 0.74-3 defaults that these games are known to run on
 // (~/Library/Preferences/"DOSBox 0.74-3-3 Preferences"). [sdl]/[render] are
 // intentionally omitted — the web client supplies its own WebGL renderer.
-const DOSBOX_CONF = [
+export const DOSBOX_CONF = [
   "[dosbox]",
   "machine=svga_s3",
   "memsize=16",
   "",
   "[cpu]",
   "core=auto",
-  "cputype=auto",
-  "cycles=auto",
-  "cycleup=10",
-  "cycledown=20",
+  "cputype=486_prefetch",
+  // 486DX2-66 class. cycleup/cycledown are absolute (>=100) so a single
+  // toolbar click is exactly +/-CYCLES_STEP, matching the client's tracker.
+  `cycles=fixed ${DEFAULT_CYCLES}`,
+  `cycleup=${CYCLES_STEP}`,
+  `cycledown=${CYCLES_STEP}`,
   "",
   "[dos]",
   "xms=true",
