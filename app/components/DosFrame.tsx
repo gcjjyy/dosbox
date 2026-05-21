@@ -24,7 +24,9 @@ export interface DosFrameProps {
 //   download : fetching the .jsdos bundle (real bytes/total)
 //   extract  : wlibzip unpacking inside the WASM bridge
 //   boot     : extract complete → first frame from the emulator
-const W = { wait: 0.05, download: 0.55, extract: 0.35, boot: 0.05 } as const;
+// download dominates wall-clock time; extract/boot are near-instant, so we give
+// download the bulk of the budget (5%→99%) and leave extract/boot a thin tail.
+const W = { wait: 0.05, download: 0.94, extract: 0.005, boot: 0.005 } as const;
 
 async function streamBundle(
   url: string,
