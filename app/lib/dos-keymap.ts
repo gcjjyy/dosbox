@@ -123,3 +123,13 @@ export const HANGUL_LABELS: Readonly<Record<number, string>> = {
   [SC.Z]: "ㅋ", [SC.X]: "ㅌ", [SC.C]: "ㅊ", [SC.V]: "ㅍ", [SC.B]: "ㅠ",
   [SC.N]: "ㅜ", [SC.M]: "ㅡ",
 };
+
+// 두벌식 *shifted* jamo — what each letter key produces with Shift held.
+// Only seven keys differ under Shift: the five 쌍자음 (ㅃㅉㄸㄲㅆ) and the two
+// compound vowels ㅒ/ㅖ. Every other letter is unchanged by Shift, so it is
+// intentionally absent here. VirtualKeyboard renders these as the third
+// label on the relevant keys (English + base jamo + shifted jamo).
+export const HANGUL_SHIFT_LABELS: Readonly<Record<number, string>> = {
+  [SC.Q]: "ㅃ", [SC.W]: "ㅉ", [SC.E]: "ㄸ", [SC.R]: "ㄲ", [SC.T]: "ㅆ",
+  [SC.O]: "ㅒ", [SC.P]: "ㅖ",
+};
