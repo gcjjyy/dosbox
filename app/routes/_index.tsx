@@ -172,7 +172,11 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         inert={!vkbVisible}
         style={{ opacity: vkbVisible ? 1 : 0.01 }}
       >
-        <VirtualKeyboard onKeyDown={onVkbKeyDown} onKeyUp={onVkbKeyUp} />
+        <VirtualKeyboard
+          onKeyDown={onVkbKeyDown}
+          onKeyUp={onVkbKeyUp}
+          onHide={() => { if (vkbVisible) toggleVkb(); }}
+        />
       </div>
       {showLogin && (
         <LoginModal

@@ -12,9 +12,12 @@
 //    Inverted-T arrow cluster: ↑ at flex 10..11 on R5 stacks directly
 //    above ↓ at flex 10..11 on R6 in both ABC and sym modes.
 //
-//  - Desktop (viewport >640px): a 6-row full keyboard with canonical ANSI
-//    stagger (Tab 1.5 / Caps 1.75 / Shift 2.25) and arrows integrated into
-//    rows 5/6 — no fixed-156px cluster column.
+//  - Desktop (viewport >640px): a 6-row full keyboard. R1 is Esc (1.5) +
+//    F1-F12 + a "hide keyboard" key (▾, calls onHide). Arrows are 1.0 (==
+//    letter keys) and integrated into rows 5/6 as an inverted-T: R5 ↑ and
+//    R6 ↓ both start at flex offset 13.25, so their centers align; the
+//    right corner of R5 (the empty "above →" slot) is a spacer. Left Shift
+//    is 1.5 and right Shift 1.75 so the right modifier isn't the runt.
 //
 // Letter keys always show two labels: English in the upper-left corner,
 // 두벌식 jamo (from HANGUL_LABELS) in the lower-right corner. Scancodes
@@ -38,6 +41,9 @@ import { HANGUL_LABELS, SC, SHIFT_LABELS } from "../lib/dos-keymap";
 export interface VirtualKeyboardProps {
   onKeyDown: (scancode: number) => void;
   onKeyUp: (scancode: number) => void;
+  /** Desktop only: invoked by the "hide keyboard" key in the Esc/F-row.
+   *  When omitted, that key is not rendered. */
+  onHide?: () => void;
 }
 
 type KeyDef =
@@ -51,9 +57,11 @@ type KeyDef =
        *  synthetic SHIFT down/up so DOS sees the shifted scancode. Used
        *  by mobile Sym-page glyphs like `!` `{` etc. */
       symShift?: boolean;
-      /** Special render role: "symToggle" — the Sym/ABC mobile toggle.
+      /** Special render role:
+       *  - "symToggle" — the Sym/ABC mobile toggle.
+       *  - "hide" — desktop "hide keyboard" key (Esc/F-row). Calls onHide.
        *  Renderer swaps label + handler; `code` is unused. */
-      role?: "symToggle";
+      role?: "symToggle" | "hide";
       spacer?: false;
     };
 
@@ -64,13 +72,16 @@ type Page = "abc" | "sym";
 // integrated into R5/R6 so the inverted-T ↑/↓ alignment survives any
 // viewport width. All rows sum to flex 15.25.
 const DESKTOP_ROWS: KeyDef[][] = [
-  // Row 1: Esc + F1..F12 (3.25 + 12 = 15.25)
+  // Row 1: Esc + F1..F12 + Hide (1.5 + 12 + 1.75 = 15.25)
+  // Esc shrunk from 3.25 → 1.5 (was dominating the row); the reclaimed
+  // width plus a right-edge "hide keyboard" key (▾) sit past F12.
   [
-    { code: SC.ESC, label: "Esc", flex: 3.25 },
+    { code: SC.ESC, label: "Esc", flex: 1.5 },
     { code: SC.F1, label: "F1" }, { code: SC.F2, label: "F2" }, { code: SC.F3, label: "F3" },
     { code: SC.F4, label: "F4" }, { code: SC.F5, label: "F5" }, { code: SC.F6, label: "F6" },
     { code: SC.F7, label: "F7" }, { code: SC.F8, label: "F8" }, { code: SC.F9, label: "F9" },
     { code: SC.F10, label: "F10" }, { code: SC.F11, label: "F11" }, { code: SC.F12, label: "F12" },
+    { code: -1, label: "▾", role: "hide", flex: 1.75 },
   ],
   // Row 2: ` 1..0 - = BS  (1 + 10 + 1 + 1 + 2.25 = 15.25)
   [
@@ -101,28 +112,34 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
     { code: SC.ENTER, label: "RET", flex: 2.5 },
   ],
-  // Row 5: Sh Z..M , . / ↑ Sh  (2.25 + 7 + 1 + 1 + 1 + 1.5 + 1.5 = 15.25)
-  // ↑ width 1.5 == R6 ↓ width → true inverted-T (centers aligned).
+  // Row 5: Sh Z..M , . / Sh ↑ ·  (1.5 + 7 + 1 + 1 + 1 + 1.75 + 1 + 1 = 15.25)
+  // Arrows are now 1.0 (== letter keys). To keep the inverted-T while
+  // shrinking ↑ from 1.5 → 1.0, ↑ moves to the 2nd-from-right slot (over R6
+  // ↓) and the right corner — the empty "above →" slot of a real inverted-T
+  // — is a spacer. Left Shift drops 2.25 → 1.5 and right Shift rises to
+  // 1.75 so the right modifier is no longer the runt of the row.
   [
-    { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
+    { code: SC.SHIFT, label: "Shift", flex: 1.5, modifier: true },
     { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
     { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
     { code: SC.M, label: "M" },
     { code: SC.COMMA, label: "," }, { code: SC.PERIOD, label: "." }, { code: SC.SLASH, label: "/" },
-    { code: SC.UP, label: "↑", flex: 1.5 },
-    { code: SC.SHIFT, label: "Shift", flex: 1.5, modifier: true },
+    { code: SC.SHIFT, label: "Shift", flex: 1.75, modifier: true },
+    { code: SC.UP, label: "↑" },
+    { spacer: true, flex: 1 },
   ],
-  // Row 6: Ctl Alt Space Alt ← ↓ →  (1.5+1.5+6.25+1.5+1.5+1.5+1.5 = 15.25)
-  // ↓ start = 1.5+1.5+6.25+1.5+1.5 = 12.25 == R5 ↑ start. Right Ctrl
-  // dropped — sacrificed for clean inverted-T alignment.
+  // Row 6: Ctl Alt Space Alt ← ↓ →  (1.5+1.5+7.75+1.5+1+1+1 = 15.25)
+  // Arrows shrunk 1.5 → 1.0 to match the letter keys; Space absorbs the
+  // reclaimed width. ↓ start = 1.5+1.5+7.75+1.5+1 = 13.25 == R5 ↑ start
+  // (also 13.25) → the inverted-T centers stay aligned.
   [
     { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
-    { code: SC.SPACE, label: "Space", flex: 6.25 },
+    { code: SC.SPACE, label: "Space", flex: 7.75 },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
-    { code: SC.LEFT, label: "←", flex: 1.5 },
-    { code: SC.DOWN, label: "↓", flex: 1.5 },
-    { code: SC.RIGHT, label: "→", flex: 1.5 },
+    { code: SC.LEFT, label: "←" },
+    { code: SC.DOWN, label: "↓" },
+    { code: SC.RIGHT, label: "→" },
   ],
 ];
 
@@ -282,7 +299,7 @@ function useIsMobile(): boolean {
   return isMobile;
 }
 
-export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
+export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide }: VirtualKeyboardProps) {
   // Refs hold authoritative dedupe state — mutated synchronously
   // inside event handlers so two pointer events arriving before React
   // re-renders can't both emit the same scancode. setRender bumps a
@@ -348,6 +365,27 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp }: VirtualKeyboardProps) {
           style={{ gridColumn: `span ${Math.round((k.flex ?? 1) * 4)}` }}
           aria-hidden="true"
         />
+      );
+    }
+
+    // Hide-keyboard key (desktop Esc/F-row) — collapses the VKB; no DOS key.
+    if (k.role === "hide") {
+      return (
+        <button
+          key={id}
+          type="button"
+          tabIndex={-1}
+          aria-label="키보드 숨기기"
+          className="vkb-key vkb-key--hide"
+          style={{ gridColumn: `span ${Math.round((k.flex ?? 1) * 4)}` }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            onHide?.();
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {k.label}
+        </button>
       );
     }
 
