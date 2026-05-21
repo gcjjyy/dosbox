@@ -16,6 +16,10 @@ export interface ToolbarProps {
   onLoginClick: () => void;
   onLogout: () => void;
   onSave: () => void;
+  // CPU cycles control
+  cycles: number;
+  onCyclesUp: () => void;
+  onCyclesDown: () => void;
 }
 
 export function Toolbar({
@@ -32,6 +36,9 @@ export function Toolbar({
   onLoginClick,
   onLogout,
   onSave,
+  cycles,
+  onCyclesUp,
+  onCyclesDown,
 }: ToolbarProps) {
   return (
     <header className="toolbar">
@@ -51,6 +58,27 @@ export function Toolbar({
           <IconKeyboard />
         </button>
         <ResolutionPicker value={resolutionId} onChange={onResolutionChange} />
+        <div className="toolbar__cycles" title="CPU 속도 (cycles) — 클수록 빠름">
+          <button
+            type="button"
+            onClick={onCyclesDown}
+            className="toolbar__icon"
+            aria-label="CPU 속도 낮추기"
+          >
+            <IconMinus />
+          </button>
+          <span className="toolbar__cycles-value" aria-live="polite">
+            {cycles.toLocaleString()}
+          </span>
+          <button
+            type="button"
+            onClick={onCyclesUp}
+            className="toolbar__icon"
+            aria-label="CPU 속도 높이기"
+          >
+            <IconPlus />
+          </button>
+        </div>
         <span className="toolbar__sep" aria-hidden="true" />
         {hasUserState && (
           <button
@@ -131,6 +159,22 @@ const svgProps = {
   strokeLinejoin: "round" as const,
   "aria-hidden": true,
 };
+
+function IconMinus() {
+  return (
+    <svg {...svgProps}>
+      <path d="M3.5 8h9" />
+    </svg>
+  );
+}
+
+function IconPlus() {
+  return (
+    <svg {...svgProps}>
+      <path d="M8 3.5v9M3.5 8h9" />
+    </svg>
+  );
+}
 
 function IconKeyboard() {
   return (

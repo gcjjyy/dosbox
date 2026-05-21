@@ -11,6 +11,7 @@ import { useVirtualKeyboard } from "../lib/use-virtual-keyboard";
 import { useUserState } from "../lib/use-user-state";
 import { clearUserState, writeUserState } from "../lib/user-state";
 import { saveToServer } from "../lib/save";
+import { DEFAULT_CYCLES, CYCLES_STEP, CYCLES_MIN, CYCLES_MAX, clampCycles } from "../lib/cpu-cycles";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "DosBox" }];
@@ -28,6 +29,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const [saving, setSaving] = useState(false);
   const [savingUserState, setSavingUserState] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [cycles, setCycles] = useState(DEFAULT_CYCLES);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   const [resolutionId, setResolutionId] = useResolution();
@@ -50,6 +52,18 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const onVkbKeyUp = useCallback((code: number) => {
     emulatorRef.current?.sendKeyUp(code);
   }, []);
+
+  const onCyclesUp = useCallback(() => {
+    if (cycles >= CYCLES_MAX) return;
+    emulatorRef.current?.cyclesUp();
+    setCycles((c) => clampCycles(c + CYCLES_STEP));
+  }, [cycles]);
+
+  const onCyclesDown = useCallback(() => {
+    if (cycles <= CYCLES_MIN) return;
+    emulatorRef.current?.cyclesDown();
+    setCycles((c) => clampCycles(c - CYCLES_STEP));
+  }, [cycles]);
 
   const checkAndSave = useCallback(async () => {
     const ci = ciRef.current;
@@ -135,6 +149,9 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         onLoginClick={() => setShowLogin(true)}
         onLogout={logout}
         onSave={checkAndSave}
+        cycles={cycles}
+        onCyclesUp={onCyclesUp}
+        onCyclesDown={onCyclesDown}
       />
       <main className="relative">
         {mounted && (

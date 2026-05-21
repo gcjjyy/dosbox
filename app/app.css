@@ -723,6 +723,22 @@ html { color-scheme: dark; }
   to { transform: rotate(360deg); }
 }
 
+/* ── Toolbar cycles control ──────────────────────────────────────── */
+
+.toolbar__cycles {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.toolbar__cycles-value {
+  min-width: 3.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.85;
+}
+
 /* ── Toolbar mobile (≤640px) ─────────────────────────────────────── */
 /* The toolbar holds 6+ controls; on narrow screens we tighten the
    chrome, drop the resolution picker label down to its 3-letter tag,
