@@ -437,6 +437,14 @@ export class DosEmulator {
       this.audioCtx = new Ctor();
     }
     this.resampleRatio = this.audioCtx.sampleRate / sourceRate;
+    // WebKit (macOS/iOS Safari) interrupts the audio session whenever a
+    // blocking system dialog (window.confirm/alert) appears or the tab is
+    // backgrounded, dropping the context to "suspended"/"interrupted" and
+    // NOT auto-resuming — audio stays dead until a fresh AudioContext is made
+    // (i.e. a page reload). Re-kick resume() on every statechange so the
+    // context recovers on its own as soon as the interruption ends. Chrome
+    // never hits this path. See also resumeAudioIfNeeded() on user gestures.
+    this.audioCtx.addEventListener("statechange", this.resumeAudioIfNeeded);
     if (!this.audioCtx.audioWorklet || typeof this.audioCtx.audioWorklet.addModule !== "function") {
       throw new Error("AudioWorklet API missing");
     }
@@ -469,7 +477,19 @@ export class DosEmulator {
     await waitForRunning(this.audioCtx, 1500);
   }
 
+  // Re-kick resume() if WebKit dropped the context out of "running" (system
+  // dialog / tab switch interruption). Arrow property so it can be both an
+  // event listener and a per-gesture call without rebinding. No-op on Chrome
+  // (the context is already "running"), cheap (one state compare) otherwise.
+  private resumeAudioIfNeeded = (): void => {
+    const ctx = this.audioCtx;
+    if (ctx && ctx.state !== "running" && ctx.state !== "closed") {
+      void ctx.resume().catch(() => undefined);
+    }
+  };
+
   private handleKey(e: KeyboardEvent, pressed: boolean): void {
+    this.resumeAudioIfNeeded();
     if (!this.ci) return;
     const code = keymap[e.code];
     if (code === undefined) return;
@@ -479,6 +499,7 @@ export class DosEmulator {
   }
 
   private handlePointer(e: PointerEvent, kind: "down" | "move" | "up"): void {
+    if (kind === "down") this.resumeAudioIfNeeded();
     if (!this.ci) return;
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
