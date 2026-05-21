@@ -12,12 +12,13 @@
 //    Inverted-T arrow cluster: ↑ at flex 10..11 on R5 stacks directly
 //    above ↓ at flex 10..11 on R6 in both ABC and sym modes.
 //
-//  - Desktop (viewport >640px): a 6-row full keyboard with canonical ANSI
-//    stagger (Tab 1.5 / Caps 1.75 / Shift 2.25 → Z sits between A and S).
-//    R1 is Esc (1.5) + F1-F12 + a "hide keyboard" key (▾, calls onHide).
-//    Right Shift is the widest modifier (3.0) since no arrow steals its row.
-//    All four arrows live in R6 as a Mac Magic Keyboard cluster: ↑/↓ stacked
-//    half-height in the center, ← → on the bottom half (role "arrows").
+//  - Desktop (viewport >640px): a 6-row full keyboard. Stagger Tab 1.5 /
+//    Caps 2.0 / Shift 2.25 keeps Z between A and S, and the paired modifiers
+//    match left↔right: Tab == \ (1.5), Caps == RET (2.0). R1 is Esc (1.5) +
+//    F1-F12 + a "hide keyboard" key (▾, calls onHide). Right Shift is the
+//    widest modifier (2.75). All four arrows live in R6 as a Mac Magic
+//    Keyboard cluster: ↑/↓ stacked half-height in the center, ← → on the
+//    bottom half (role "arrows"). Rows sum to flex 15.0 → 60 columns.
 //
 // Letter keys always show two labels: English in the upper-left corner,
 // 두벌식 jamo (from HANGUL_LABELS) in the lower-right corner. Scancodes
@@ -69,12 +70,13 @@ type KeyDef =
 
 type Page = "abc" | "sym";
 
-// Desktop full layout. Stagger: Tab 1.5 / Caps 1.75 / Shift 2.25 produces
-// canonical ANSI offsets (A between Q-W; Z between A-S). Arrows are
-// integrated into R5/R6 so the inverted-T ↑/↓ alignment survives any
-// viewport width. All rows sum to flex 15.25.
+// Desktop full layout. Stagger: Tab 1.5 / Caps 2.0 / Shift 2.25 keeps Z
+// between A and S while the paired modifiers match left↔right: Tab == \ (1.5)
+// and Caps == RET (2.0). All rows sum to flex 15.0 → 60 columns (the grid in
+// app.css uses repeat(60); mobile overrides to 48). 0.25-step flex values
+// keep every `flex × 4` span an integer so the columns line up exactly.
 const DESKTOP_ROWS: KeyDef[][] = [
-  // Row 1: Esc + F1..F12 + Hide (1.5 + 12 + 1.75 = 15.25)
+  // Row 1: Esc + F1..F12 + Hide (1.5 + 12 + 1.5 = 15.0)
   // Esc shrunk from 3.25 → 1.5 (was dominating the row); the reclaimed
   // width plus a right-edge "hide keyboard" key (▾) sit past F12.
   [
@@ -83,9 +85,9 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.F4, label: "F4" }, { code: SC.F5, label: "F5" }, { code: SC.F6, label: "F6" },
     { code: SC.F7, label: "F7" }, { code: SC.F8, label: "F8" }, { code: SC.F9, label: "F9" },
     { code: SC.F10, label: "F10" }, { code: SC.F11, label: "F11" }, { code: SC.F12, label: "F12" },
-    { code: -1, label: "▾", role: "hide", flex: 1.75 },
+    { code: -1, label: "▾", role: "hide", flex: 1.5 },
   ],
-  // Row 2: ` 1..0 - = BS  (1 + 10 + 1 + 1 + 2.25 = 15.25)
+  // Row 2: ` 1..0 - = BS  (1 + 10 + 1 + 1 + 2 = 15.0)
   [
     { code: SC.GRAVE, label: "`" },
     { code: SC.D1, label: "1" }, { code: SC.D2, label: "2" }, { code: SC.D3, label: "3" },
@@ -93,9 +95,9 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.D7, label: "7" }, { code: SC.D8, label: "8" }, { code: SC.D9, label: "9" },
     { code: SC.D0, label: "0" },
     { code: SC.MINUS, label: "-" }, { code: SC.EQUAL, label: "=" },
-    { code: SC.BS, label: "BS", flex: 2.25 },
+    { code: SC.BS, label: "BS", flex: 2 },
   ],
-  // Row 3: Tab Q..P [ ] \  (1.5 + 10 + 1 + 1 + 1.75 = 15.25)
+  // Row 3: Tab Q..P [ ] \  (1.5 + 10 + 1 + 1 + 1.5 = 15.0). Tab == \.
   [
     { code: SC.TAB, label: "Tab", flex: 1.5 },
     { code: SC.Q, label: "Q" }, { code: SC.W, label: "W" }, { code: SC.E, label: "E" },
@@ -103,38 +105,36 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.U, label: "U" }, { code: SC.I, label: "I" }, { code: SC.O, label: "O" },
     { code: SC.P, label: "P" },
     { code: SC.LBRACKET, label: "[" }, { code: SC.RBRACKET, label: "]" },
-    { code: SC.BACKSLASH, label: "\\", flex: 1.75 },
+    { code: SC.BACKSLASH, label: "\\", flex: 1.5 },
   ],
-  // Row 4: Caps A..L ; ' RET  (1.75 + 9 + 1 + 1 + 2.5 = 15.25)
+  // Row 4: Caps A..L ; ' RET  (2 + 9 + 1 + 1 + 2 = 15.0). Caps == RET.
   [
-    { code: SC.CAPSLOCK, label: "Caps", flex: 1.75 },
+    { code: SC.CAPSLOCK, label: "Caps", flex: 2 },
     { code: SC.A, label: "A" }, { code: SC.S, label: "S" }, { code: SC.D, label: "D" },
     { code: SC.F, label: "F" }, { code: SC.G, label: "G" }, { code: SC.H, label: "H" },
     { code: SC.J, label: "J" }, { code: SC.K, label: "K" }, { code: SC.L, label: "L" },
     { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
-    { code: SC.ENTER, label: "RET", flex: 2.5 },
+    { code: SC.ENTER, label: "RET", flex: 2 },
   ],
-  // Row 5: Sh Z..M , . / Sh  (2.25 + 7 + 1 + 1 + 1 + 3.0 = 15.25)
-  // Canonical ANSI stagger restored: left Shift 2.25 puts Z between A and S
-  // (A starts at 1.75, S at 2.75; Z at 2.25 → centered between them). All
-  // four arrows left this row (now a Mac-style cluster in R6), so right
-  // Shift expands to 3.0 — the widest modifier on the board.
+  // Row 5: Sh Z..M , . / Sh  (2.25 + 7 + 1 + 1 + 1 + 2.75 = 15.0)
+  // Left Shift 2.25 keeps Z between A and S; with all four arrows now in R6
+  // (Mac-style cluster), right Shift is a full 2.75 — the widest modifier.
   [
     { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
     { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
     { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
     { code: SC.M, label: "M" },
     { code: SC.COMMA, label: "," }, { code: SC.PERIOD, label: "." }, { code: SC.SLASH, label: "/" },
-    { code: SC.SHIFT, label: "Shift", flex: 3.0, modifier: true },
+    { code: SC.SHIFT, label: "Shift", flex: 2.75, modifier: true },
   ],
-  // Row 6: Ctl Alt Space Alt [arrows]  (1.5 + 1.5 + 7.75 + 1.5 + 3.0 = 15.25)
+  // Row 6: Ctl Alt Space Alt [arrows]  (1.5 + 1.5 + 7.5 + 1.5 + 3.0 = 15.0)
   // Arrows are a Mac Magic Keyboard cluster: ↑/↓ stacked half-height in the
   // center column, ← → on the bottom half flanking ↓ (the two top corners,
   // above ← and →, are empty). Rendered by role "arrows" into a 2×3 grid.
   [
     { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
-    { code: SC.SPACE, label: "Space", flex: 7.75 },
+    { code: SC.SPACE, label: "Space", flex: 7.5 },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
     { code: -1, label: "", role: "arrows", flex: 3.0 },
   ],

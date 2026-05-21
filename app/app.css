@@ -436,11 +436,11 @@ html { color-scheme: dark; }
 
 /* Grid-based row so cells with different flex weights line up *across rows*
    regardless of how many gaps the row has. Each cell sets `grid-column:
-   span <flex * 4>` via inline style. Desktop rows sum to 15.25 → 61 cols;
+   span <flex * 4>` via inline style. Desktop rows sum to 15.0 → 60 cols;
    mobile rows sum to 12 → 48 cols (overridden in the phone @media block). */
 .vkb-row {
   display: grid;
-  grid-template-columns: repeat(61, minmax(0, 1fr));
+  grid-template-columns: repeat(60, minmax(0, 1fr));
   gap: 5px;
 }
 .vkb-spacer { min-width: 0; }
