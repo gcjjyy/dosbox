@@ -18,6 +18,7 @@ export interface CommandInterface {
   sendMouseButton: (button: number, pressed: boolean) => void;
   sendMouseSync: () => void;
   persist: (onlyChanges?: boolean) => Promise<Uint8Array | null | { drives: unknown[] }>;
+  sendBackendEvent: (event: unknown) => void;
   events: () => CommandInterfaceEvents;
 }
 
@@ -503,6 +504,16 @@ export class DosEmulator {
   sendKeyDown(scancode: number): void { this.ci?.sendKeyEvent(scancode, true); }
   sendKeyUp(scancode: number): void { this.ci?.sendKeyEvent(scancode, false); }
   sendKeyTap(scancode: number): void { this.ci?.simulateKeyPress(scancode); }
+
+  // Trigger dosbox-x's cycle mapper handlers by name via the backend-event
+  // bridge (wdosbox-x.js: "wc-trigger-event" -> _TriggerEventByName).
+  // No key-event injection needed. Step size = conf cycleup/cycledown.
+  cyclesUp(): void {
+    this.ci?.sendBackendEvent({ type: "wc-trigger-event", event: "hand_cycleup" });
+  }
+  cyclesDown(): void {
+    this.ci?.sendBackendEvent({ type: "wc-trigger-event", event: "hand_cycledown" });
+  }
 
   get commandInterface(): CommandInterface | null { return this.ci; }
 
