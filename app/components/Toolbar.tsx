@@ -1,4 +1,5 @@
 import { ResolutionPicker, type ResolutionId } from "./ResolutionPicker";
+import { CYCLES_MIN, CYCLES_MAX } from "../lib/cpu-cycles";
 
 export interface ToolbarProps {
   isAdmin: boolean;
@@ -62,6 +63,7 @@ export function Toolbar({
           <button
             type="button"
             onClick={onCyclesDown}
+            disabled={cycles <= CYCLES_MIN}
             className="toolbar__icon"
             aria-label="CPU 속도 낮추기"
           >
@@ -73,6 +75,7 @@ export function Toolbar({
           <button
             type="button"
             onClick={onCyclesUp}
+            disabled={cycles >= CYCLES_MAX}
             className="toolbar__icon"
             aria-label="CPU 속도 높이기"
           >
