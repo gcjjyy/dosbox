@@ -12,12 +12,12 @@
 //    Inverted-T arrow cluster: ↑ at flex 10..11 on R5 stacks directly
 //    above ↓ at flex 10..11 on R6 in both ABC and sym modes.
 //
-//  - Desktop (viewport >640px): a 6-row full keyboard. R1 is Esc (1.5) +
-//    F1-F12 + a "hide keyboard" key (▾, calls onHide). Arrows are 1.0 (==
-//    letter keys) and integrated into rows 5/6 as an inverted-T: R5 ↑ and
-//    R6 ↓ both start at flex offset 13.25, so their centers align; the
-//    right corner of R5 (the empty "above →" slot) is a spacer. Left Shift
-//    is 1.5 and right Shift 1.75 so the right modifier isn't the runt.
+//  - Desktop (viewport >640px): a 6-row full keyboard with canonical ANSI
+//    stagger (Tab 1.5 / Caps 1.75 / Shift 2.25 → Z sits between A and S).
+//    R1 is Esc (1.5) + F1-F12 + a "hide keyboard" key (▾, calls onHide).
+//    Right Shift is the widest modifier (3.0) since no arrow steals its row.
+//    All four arrows live in R6 as a Mac Magic Keyboard cluster: ↑/↓ stacked
+//    half-height in the center, ← → on the bottom half (role "arrows").
 //
 // Letter keys always show two labels: English in the upper-left corner,
 // 두벌식 jamo (from HANGUL_LABELS) in the lower-right corner. Scancodes
@@ -60,8 +60,10 @@ type KeyDef =
       /** Special render role:
        *  - "symToggle" — the Sym/ABC mobile toggle.
        *  - "hide" — desktop "hide keyboard" key (Esc/F-row). Calls onHide.
+       *  - "arrows" — desktop Mac-style half-height arrow cluster (R6).
+       *    Renders its own 2×3 grid of UP/LEFT/DOWN/RIGHT keys; `code` unused.
        *  Renderer swaps label + handler; `code` is unused. */
-      role?: "symToggle" | "hide";
+      role?: "symToggle" | "hide" | "arrows";
       spacer?: false;
     };
 
@@ -112,34 +114,29 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
     { code: SC.ENTER, label: "RET", flex: 2.5 },
   ],
-  // Row 5: Sh Z..M , . / Sh ↑ ·  (1.5 + 7 + 1 + 1 + 1 + 1.75 + 1 + 1 = 15.25)
-  // Arrows are now 1.0 (== letter keys). To keep the inverted-T while
-  // shrinking ↑ from 1.5 → 1.0, ↑ moves to the 2nd-from-right slot (over R6
-  // ↓) and the right corner — the empty "above →" slot of a real inverted-T
-  // — is a spacer. Left Shift drops 2.25 → 1.5 and right Shift rises to
-  // 1.75 so the right modifier is no longer the runt of the row.
+  // Row 5: Sh Z..M , . / Sh  (2.25 + 7 + 1 + 1 + 1 + 3.0 = 15.25)
+  // Canonical ANSI stagger restored: left Shift 2.25 puts Z between A and S
+  // (A starts at 1.75, S at 2.75; Z at 2.25 → centered between them). All
+  // four arrows left this row (now a Mac-style cluster in R6), so right
+  // Shift expands to 3.0 — the widest modifier on the board.
   [
-    { code: SC.SHIFT, label: "Shift", flex: 1.5, modifier: true },
+    { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
     { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
     { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
     { code: SC.M, label: "M" },
     { code: SC.COMMA, label: "," }, { code: SC.PERIOD, label: "." }, { code: SC.SLASH, label: "/" },
-    { code: SC.SHIFT, label: "Shift", flex: 1.75, modifier: true },
-    { code: SC.UP, label: "↑" },
-    { spacer: true, flex: 1 },
+    { code: SC.SHIFT, label: "Shift", flex: 3.0, modifier: true },
   ],
-  // Row 6: Ctl Alt Space Alt ← ↓ →  (1.5+1.5+7.75+1.5+1+1+1 = 15.25)
-  // Arrows shrunk 1.5 → 1.0 to match the letter keys; Space absorbs the
-  // reclaimed width. ↓ start = 1.5+1.5+7.75+1.5+1 = 13.25 == R5 ↑ start
-  // (also 13.25) → the inverted-T centers stay aligned.
+  // Row 6: Ctl Alt Space Alt [arrows]  (1.5 + 1.5 + 7.75 + 1.5 + 3.0 = 15.25)
+  // Arrows are a Mac Magic Keyboard cluster: ↑/↓ stacked half-height in the
+  // center column, ← → on the bottom half flanking ↓ (the two top corners,
+  // above ← and →, are empty). Rendered by role "arrows" into a 2×3 grid.
   [
     { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
     { code: SC.SPACE, label: "Space", flex: 7.75 },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
-    { code: SC.LEFT, label: "←" },
-    { code: SC.DOWN, label: "↓" },
-    { code: SC.RIGHT, label: "→" },
+    { code: -1, label: "", role: "arrows", flex: 3.0 },
   ],
 ];
 
@@ -365,6 +362,49 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide }: VirtualKeyboardP
           style={{ gridColumn: `span ${Math.round((k.flex ?? 1) * 4)}` }}
           aria-hidden="true"
         />
+      );
+    }
+
+    // Arrow cluster (desktop R6) — Mac Magic Keyboard layout: ↑/↓ stacked
+    // half-height in the center column, ← → on the bottom half flanking ↓.
+    // Self-contained 2×3 grid; each arrow is a real key wired to the same
+    // press handlers as every other letter key.
+    if (k.role === "arrows") {
+      const arrow = (sc: number, label: string, sub: string) => {
+        const aid = `${id}-${sub}`;
+        const pressed = pressedRef.current.has(aid);
+        return (
+          <button
+            key={aid}
+            type="button"
+            tabIndex={-1}
+            aria-label={label}
+            aria-pressed={pressed}
+            className={
+              "vkb-key vkb-arrow vkb-arrow--" + sub +
+              (pressed ? " vkb-key--pressed" : "")
+            }
+            onPointerDown={(e) => { e.preventDefault(); handleDown(aid, sc, false, false); }}
+            onPointerUp={(e) => { e.preventDefault(); handleUp(aid, sc, false, false); }}
+            onPointerCancel={() => handleUp(aid, sc, false, false)}
+            onPointerLeave={(e) => { if (e.buttons !== 0) handleUp(aid, sc, false, false); }}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            {label}
+          </button>
+        );
+      };
+      return (
+        <div
+          key={id}
+          className="vkb-arrows"
+          style={{ gridColumn: `span ${Math.round((k.flex ?? 1) * 4)}` }}
+        >
+          {arrow(SC.UP, "↑", "up")}
+          {arrow(SC.LEFT, "←", "left")}
+          {arrow(SC.DOWN, "↓", "down")}
+          {arrow(SC.RIGHT, "→", "right")}
+        </div>
       );
     }
 

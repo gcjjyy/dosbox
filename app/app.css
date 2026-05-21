@@ -522,6 +522,30 @@ html { color-scheme: dark; }
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     0 0 14px rgba(240, 179, 42, 0.32);
 }
+/* Desktop arrow cluster — Mac Magic Keyboard style. The cell stretches to
+   the full row height (set by the neighbouring full-size keys); its internal
+   2×3 grid then splits that height in two so ↑/↓ are half-height. ← → sit on
+   the bottom half flanking ↓; the two top corners are intentionally empty. */
+.vkb-arrows {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  grid-template-areas:
+    ".    up    ."
+    "left down right";
+  gap: 4px;
+  min-width: 0;
+}
+.vkb-arrow {
+  min-height: 0;
+  padding: 0;
+  font-size: 13px;
+}
+.vkb-arrow--up { grid-area: up; }
+.vkb-arrow--left { grid-area: left; }
+.vkb-arrow--down { grid-area: down; }
+.vkb-arrow--right { grid-area: right; }
+
 /* Hide-keyboard cell (desktop Esc/F-row, ▾) — muted, leans on the chevron
    glyph rather than a fill so it reads as a control, not a typeable key. */
 .vkb-key--hide {
