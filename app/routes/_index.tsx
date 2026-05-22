@@ -6,12 +6,13 @@ import { Toolbar } from "../components/Toolbar";
 import { LoginModal } from "../components/LoginModal";
 import { VirtualKeyboard } from "../components/VirtualKeyboard";
 import { resolutionById } from "../components/ResolutionPicker";
-import { useResolution } from "../lib/use-resolution";
+import { OptionsDialog } from "../components/OptionsDialog";
 import { useVirtualKeyboard } from "../lib/use-virtual-keyboard";
 import { useUserState } from "../lib/use-user-state";
 import { clearUserState, writeUserState } from "../lib/user-state";
 import { saveToServer } from "../lib/save";
-import { DEFAULT_CYCLES, CYCLES_STEP, CYCLES_MIN, CYCLES_MAX, clampCycles } from "../lib/cpu-cycles";
+import { useOptions } from "../lib/use-options";
+import { CYCLES_STEP, CYCLES_MAX, CYCLES_MIN, clampCycles, cyclesReplay } from "../lib/cpu-cycles";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "DosBox" }];
@@ -26,19 +27,32 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const ciRef = useRef<CommandInterface | null>(null);
   const emulatorRef = useRef<DosEmulator | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingUserState, setSavingUserState] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [cycles, setCycles] = useState(DEFAULT_CYCLES);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
-  const [resolutionId, setResolutionId] = useResolution();
-  const resolution = resolutionById(resolutionId);
+  const [options, setOption] = useOptions();
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const cyclesAppliedRef = useRef(false);
+  const resolution = resolutionById(options.resolutionId);
   const [vkbVisible, toggleVkb] = useVirtualKeyboard();
   const [hasUserStateValue, refreshHasUserState] = useUserState();
 
   const onReady = useCallback((ci: CommandInterface) => {
     ciRef.current = ci;
+    // Restore the saved cycles value by replaying cycleup/down from the baked
+    // default (the shared bundle can't be re-baked per user). Runs once.
+    if (!cyclesAppliedRef.current) {
+      cyclesAppliedRef.current = true;
+      const { dir, count } = cyclesReplay(optionsRef.current.cycles);
+      for (let i = 0; i < count; i++) {
+        if (dir === "up") emulatorRef.current?.cyclesUp();
+        else emulatorRef.current?.cyclesDown();
+      }
+    }
   }, []);
 
   const onEmulator = useCallback((emu: DosEmulator | null) => {
@@ -54,16 +68,18 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   }, []);
 
   const onCyclesUp = useCallback(() => {
-    if (cycles >= CYCLES_MAX) return;
+    const cur = optionsRef.current.cycles;
+    if (cur >= CYCLES_MAX) return;
     emulatorRef.current?.cyclesUp();
-    setCycles((c) => clampCycles(c + CYCLES_STEP));
-  }, [cycles]);
+    setOption("cycles", clampCycles(cur + CYCLES_STEP));
+  }, [setOption]);
 
   const onCyclesDown = useCallback(() => {
-    if (cycles <= CYCLES_MIN) return;
+    const cur = optionsRef.current.cycles;
+    if (cur <= CYCLES_MIN) return;
     emulatorRef.current?.cyclesDown();
-    setCycles((c) => clampCycles(c - CYCLES_STEP));
-  }, [cycles]);
+    setOption("cycles", clampCycles(cur - CYCLES_STEP));
+  }, [setOption]);
 
   const checkAndSave = useCallback(async () => {
     const ci = ciRef.current;
@@ -138,10 +154,9 @@ export default function Index({ loaderData }: Route.ComponentProps) {
       <Toolbar
         isAdmin={loaderData.isAdmin}
         saving={saving}
-        resolutionId={resolutionId}
-        onResolutionChange={setResolutionId}
         vkbVisible={vkbVisible}
         onVkbToggle={toggleVkb}
+        onOptionsClick={() => setShowOptions(true)}
         savingUserState={savingUserState}
         hasUserState={hasUserStateValue}
         onUserSave={onUserSave}
@@ -149,9 +164,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         onLoginClick={() => setShowLogin(true)}
         onLogout={logout}
         onSave={checkAndSave}
-        cycles={cycles}
-        onCyclesUp={onCyclesUp}
-        onCyclesDown={onCyclesDown}
       />
       <main className="relative">
         {mounted && (
@@ -161,6 +173,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
             onEmulator={onEmulator}
             width={resolution.width}
             height={resolution.height}
+            vAlign={options.canvasVAlign}
           />
         )}
         {status && (
@@ -193,12 +206,27 @@ export default function Index({ loaderData }: Route.ComponentProps) {
           onKeyDown={onVkbKeyDown}
           onKeyUp={onVkbKeyUp}
           onHide={() => { if (vkbVisible) toggleVkb(); }}
+          bgOpacity={options.keyboardOpacity}
         />
       </div>
       {showLogin && (
         <LoginModal
           onClose={() => setShowLogin(false)}
           onSuccess={() => window.location.reload()}
+        />
+      )}
+      {showOptions && (
+        <OptionsDialog
+          onClose={() => setShowOptions(false)}
+          resolutionId={options.resolutionId}
+          onResolutionChange={(id) => setOption("resolutionId", id)}
+          cycles={options.cycles}
+          onCyclesUp={onCyclesUp}
+          onCyclesDown={onCyclesDown}
+          canvasVAlign={options.canvasVAlign}
+          onCanvasVAlignChange={(v) => setOption("canvasVAlign", v)}
+          keyboardOpacity={options.keyboardOpacity}
+          onKeyboardOpacityChange={(v) => setOption("keyboardOpacity", v)}
         />
       )}
     </div>
