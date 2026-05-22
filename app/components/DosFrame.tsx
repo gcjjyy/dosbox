@@ -17,6 +17,8 @@ export interface DosFrameProps {
   width?: number | null;
   /** Display height in CSS px. null → fill available space. */
   height?: number | null;
+  /** Vertical alignment of the canvas within the stage. Default "middle". */
+  vAlign?: "top" | "middle" | "bottom";
 }
 
 // Progress budget across the four phases. Sums to 1.0.
@@ -62,7 +64,7 @@ async function streamBundle(
   return out;
 }
 
-export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, height }: DosFrameProps) {
+export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, height, vAlign = "middle" }: DosFrameProps) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const [bootVisible, setBootVisible] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -170,7 +172,7 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
   }, [bundleUrl, onReady, onError, onEmulator]);
 
   return (
-    <div className="dos-stage">
+    <div className={`dos-stage dos-stage--valign-${vAlign}`}>
       <canvas
         ref={ref}
         className={fixedSize ? "dos-canvas dos-canvas--fixed" : "dos-canvas dos-canvas--fill"}

@@ -253,12 +253,16 @@ html { color-scheme: dark; }
   width: 100%;
   height: 100%;
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-items: center;
   background:
     radial-gradient(ellipse 80% 70% at 50% 50%, var(--color-navy-bg-lift) 0%, var(--color-navy-bg) 75%),
     var(--color-navy-bg);
   overflow: auto;
 }
+.dos-stage--valign-top { align-items: start; }
+.dos-stage--valign-middle { align-items: center; }
+.dos-stage--valign-bottom { align-items: end; }
 .dos-canvas { image-rendering: auto; display: block; }
 .dos-canvas--fill {
   width: 100%;
