@@ -1,13 +1,9 @@
-import { ResolutionPicker, type ResolutionId } from "./ResolutionPicker";
-import { CYCLES_MIN, CYCLES_MAX } from "../lib/cpu-cycles";
-
 export interface ToolbarProps {
   isAdmin: boolean;
   saving: boolean;
-  resolutionId: ResolutionId;
-  onResolutionChange: (id: ResolutionId) => void;
   vkbVisible: boolean;
   onVkbToggle: () => void;
+  onOptionsClick: () => void;
   // Per-user state save
   savingUserState: boolean;
   hasUserState: boolean;
@@ -17,19 +13,14 @@ export interface ToolbarProps {
   onLoginClick: () => void;
   onLogout: () => void;
   onSave: () => void;
-  // CPU cycles control
-  cycles: number;
-  onCyclesUp: () => void;
-  onCyclesDown: () => void;
 }
 
 export function Toolbar({
   isAdmin,
   saving,
-  resolutionId,
-  onResolutionChange,
   vkbVisible,
   onVkbToggle,
+  onOptionsClick,
   savingUserState,
   hasUserState,
   onUserSave,
@@ -37,9 +28,6 @@ export function Toolbar({
   onLoginClick,
   onLogout,
   onSave,
-  cycles,
-  onCyclesUp,
-  onCyclesDown,
 }: ToolbarProps) {
   return (
     <header className="toolbar">
@@ -58,30 +46,15 @@ export function Toolbar({
         >
           <IconKeyboard />
         </button>
-        <ResolutionPicker value={resolutionId} onChange={onResolutionChange} />
-        <div className="toolbar__cycles" title="CPU 속도 (cycles) — 클수록 빠름">
-          <button
-            type="button"
-            onClick={onCyclesDown}
-            disabled={cycles <= CYCLES_MIN}
-            className="toolbar__icon"
-            aria-label="CPU 속도 낮추기"
-          >
-            <IconMinus />
-          </button>
-          <span className="toolbar__cycles-value" aria-live="polite">
-            {cycles.toLocaleString()}
-          </span>
-          <button
-            type="button"
-            onClick={onCyclesUp}
-            disabled={cycles >= CYCLES_MAX}
-            className="toolbar__icon"
-            aria-label="CPU 속도 높이기"
-          >
-            <IconPlus />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onOptionsClick}
+          className="toolbar__icon"
+          title="설정"
+          aria-label="설정 열기"
+        >
+          <IconSettings />
+        </button>
         <span className="toolbar__sep" aria-hidden="true" />
         {hasUserState && (
           <button
@@ -186,6 +159,15 @@ function IconKeyboard() {
       <path d="M3.7 6.6h.01M5.7 6.6h.01M7.7 6.6h.01M9.7 6.6h.01M11.7 6.6h.01M13 6.6h.01" />
       <path d="M3.7 9.1h.01M5.7 9.1h.01M9.7 9.1h.01M11.7 9.1h.01" />
       <path d="M5.4 10.9h5.2" />
+    </svg>
+  );
+}
+
+function IconSettings() {
+  return (
+    <svg {...svgProps}>
+      <circle cx="8" cy="8" r="2.1" />
+      <path d="M8 1.7v1.6M8 12.7v1.6M14.3 8h-1.6M3.3 8H1.7M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6L3.5 3.5" />
     </svg>
   );
 }
