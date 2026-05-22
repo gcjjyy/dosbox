@@ -163,7 +163,7 @@ const svgProps = {
   "aria-hidden": true,
 };
 
-function IconMinus() {
+export function IconMinus() {
   return (
     <svg {...svgProps}>
       <path d="M3.5 8h9" />
@@ -171,7 +171,7 @@ function IconMinus() {
   );
 }
 
-function IconPlus() {
+export function IconPlus() {
   return (
     <svg {...svgProps}>
       <path d="M8 3.5v9M3.5 8h9" />
