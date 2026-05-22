@@ -219,23 +219,18 @@ const DESKTOP_ROWS: KeyDef[][] = [
 // (swaps abc⟷sym) · R6 modifier/space/arrows. Only R2-R5 swap; everything
 // else is invariant so muscle memory survives a page toggle.
 
-// R0: the keys that don't belong on a clean QWERTY block — Esc/Tab/Caps plus
-// Shift/Backspace/Enter lifted off the letter rows, then F11/F12 bumped up so
-// the F-row can be a clean 10. Layout (L→R): Esc/Tab/Caps · F11/F12 (rarely
-// used, tucked in the middle) · Shift · ⌫ · Enter pushed to the right edge.
-// Esc/Tab/Caps/Shift at flex 2.25, F11/F12/⌫/Enter at flex 1.5 = 15. Now that
-// ⌫ and Enter are lucide icons, Enter no longer needs the wide word-slot, so
-// its old 3.0 makes room for ⌫. Backspace moved here off the letter row (R5),
-// whose old ⌫ slot now holds ↑ (above ↓ on R6 — a mobile inverted-T).
+// R0: the keys that don't belong on a clean QWERTY block — Esc/Tab/Caps, the
+// two extra F-keys, and Backspace. Shift and Enter moved down to the letter row
+// (R5) where a real keyboard puts them (Shift left of Z, Enter at the lower
+// right by the arrows), which frees this row to spread out: Esc/Tab/Caps 2.5,
+// F11/F12 2 (rarely used), ⌫ 3.5 (wide, top-right) = 15.
 const MOBILE_CONTROL_ROW: KeyDef[] = [
-  { code: SC.ESC, label: "Esc", flex: 2.25, modLook: true },
-  { code: SC.TAB, label: "Tab", flex: 2.25, modLook: true },
-  { code: SC.CAPSLOCK, label: "Caps", flex: 2.25, modLook: true },
-  { code: SC.F11, label: "F11", flex: 1.5 },
-  { code: SC.F12, label: "F12", flex: 1.5 },
-  { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
-  { code: SC.BS, label: "⌫", flex: 1.5 },
-  { code: SC.ENTER, label: "RETURN", flex: 1.5, modLook: true },
+  { code: SC.ESC, label: "Esc", flex: 2.5, modLook: true },
+  { code: SC.TAB, label: "Tab", flex: 2.5, modLook: true },
+  { code: SC.CAPSLOCK, label: "Caps", flex: 2.5, modLook: true },
+  { code: SC.F11, label: "F11", flex: 2 },
+  { code: SC.F12, label: "F12", flex: 2 },
+  { code: SC.BS, label: "⌫", flex: 3.5 },
 ];
 
 // R1: F1..F10 — mode-invariant. 10 keys at flex 1.5 (span 6) = 60, so each
@@ -282,18 +277,19 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.L, label: "L", flex: 1.5 },
       { spacer: true, flex: 0.75 },
     ],
-    // R5: Z..M ↑ — letters + the ↑ arrow right of M (Backspace moved to R0).
-    // A span-6 leading spacer keeps Z at col 6 (between A and S), preserving the
-    // Q→A→Z diagonal. ↑ sits at cols 49..54 — exactly the center column of the
-    // R6 arrow cluster below, so ↑ lands directly over ↓ (mobile inverted-T).
+    // R5: Shift Z..M ↑ Enter — left Shift takes the leading-spacer slot (cols
+    // 1..6, exactly where a real keyboard's left Shift sits, and it keeps Z at
+    // col 7 between A and S). ↑ sits at cols 49..54 (over the R6 center ↓ — a
+    // mobile inverted-T). Enter fills the old trailing spacer (cols 55..60),
+    // landing it by the arrows at the lower right — arrow-to-pick, Enter-to-OK.
     [
-      { spacer: true, flex: 1.5 },
+      { code: SC.SHIFT, label: "Shift", flex: 1.5, modifier: true },
       { code: SC.Z, label: "Z", flex: 1.5 }, { code: SC.X, label: "X", flex: 1.5 },
       { code: SC.C, label: "C", flex: 1.5 }, { code: SC.V, label: "V", flex: 1.5 },
       { code: SC.B, label: "B", flex: 1.5 }, { code: SC.N, label: "N", flex: 1.5 },
       { code: SC.M, label: "M", flex: 1.5 },
       { code: SC.UP, label: "↑", flex: 1.5 },
-      { spacer: true, flex: 1.5 },
+      { code: SC.ENTER, label: "RETURN", flex: 1.5, modLook: true },
     ],
   ],
   sym: [
@@ -338,17 +334,17 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.SLASH, label: "/", flex: 1.5 },
       { spacer: true, flex: 0.75 },
     ],
-    // R5: , . ? ↑ — leftover punctuation + the ↑ arrow at cols 49..54 (same slot
-    // as abc R5 so ↑ doesn't jump on toggle, and it stays above ↓ on R6).
-    // Shift/Backspace/Enter live on R0. The span-6 leading spacer matches abc R5.
+    // R5: Shift , . ? ↑ Enter — Shift/↑/Enter sit in the same slots as abc R5
+    // (cols 1..6, 49..54, 55..60) so they never jump on a page toggle. Backspace
+    // lives on R0. The span-6 mid spacer matches abc's letter block width.
     [
-      { spacer: true, flex: 1.5 },
+      { code: SC.SHIFT, label: "Shift", flex: 1.5, modifier: true },
       { code: SC.COMMA, label: ",", flex: 1.5 },
       { code: SC.PERIOD, label: ".", flex: 1.5 },
       { code: SC.SLASH, label: "?", flex: 1.5, symShift: true },
       { spacer: true, flex: 6 },
       { code: SC.UP, label: "↑", flex: 1.5 },
-      { spacer: true, flex: 1.5 },
+      { code: SC.ENTER, label: "RETURN", flex: 1.5, modLook: true },
     ],
   ],
 };
