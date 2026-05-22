@@ -84,9 +84,9 @@ describe("bundle", () => {
     expect(a).toBe(b);
   });
 
-  it("pins cycles to 486DX2-66 with an absolute step", async () => {
+  it("pins cycles to the default with an absolute step", async () => {
     const { DOSBOX_CONF } = await import("./bundle");
-    expect(DOSBOX_CONF).toContain("cycles=fixed 23880");
+    expect(DOSBOX_CONF).toContain("cycles=fixed 8000");
     expect(DOSBOX_CONF).toContain("cycleup=2000");
     expect(DOSBOX_CONF).toContain("cycledown=2000");
   });
