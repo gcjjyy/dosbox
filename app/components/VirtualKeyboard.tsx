@@ -122,12 +122,13 @@ type KeyDef =
       /** Special render role:
        *  - "symToggle" — the Sym/ABC mobile toggle.
        *  - "hide" — desktop "hide keyboard" key (Esc/F-row). Calls onHide.
-       *  - "arrows" — desktop Mac-style cluster: ↑ top-center, ←↓→ bottom.
+       *  - "arrowUp" — desktop ↑ on the Shift line (R5), centered over ↓.
+       *  - "arrows" — desktop ←↓→ row (R6), full row height.
        *  - "arrowsMobile" — mobile cluster: ← and → full-height on the flanks,
        *    ↑/↓ stacked half-height in the center column.
-       *  Both arrow roles render their own grid of UP/LEFT/DOWN/RIGHT keys;
-       *  `code` is unused. Renderer swaps label + handler. */
-      role?: "symToggle" | "hide" | "arrows" | "arrowsMobile";
+       *  Arrow roles render their own grid of arrow keys; `code` is unused.
+       *  Renderer swaps label + handler. */
+      role?: "symToggle" | "hide" | "arrowUp" | "arrows" | "arrowsMobile";
       spacer?: false;
     };
 
@@ -179,21 +180,21 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
     { code: SC.ENTER, label: "RETURN", flex: 2 },
   ],
-  // Row 5: Sh Z..M , . / Sh  (2.25 + 7 + 1 + 1 + 1 + 2.75 = 15.0)
-  // Left Shift 2.25 keeps Z between A and S; with all four arrows now in R6
-  // (Mac-style cluster), right Shift is a full 2.75 — the widest modifier.
+  // Row 5: Sh Z..M , . / ↑  (2.25 + 7 + 1 + 1 + 1 + 2.75 = 15.0)
+  // Left Shift 2.25 keeps Z between A and S. The old right Shift was dropped
+  // (redundant on a virtual keyboard) and its 2.75 slot now holds the ↑ key —
+  // the top of an inverted-T whose ←↓→ sit directly below on R6.
   [
     { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
     { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
     { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
     { code: SC.M, label: "M" },
     { code: SC.COMMA, label: "," }, { code: SC.PERIOD, label: "." }, { code: SC.SLASH, label: "/" },
-    { code: SC.SHIFT, label: "Shift", flex: 2.75, modifier: true },
+    { code: -1, label: "", role: "arrowUp", flex: 2.75 },
   ],
-  // Row 6: Ctl Alt Space Alt [arrows]  (1.5 + 1.5 + 7.5 + 1.5 + 3.0 = 15.0)
-  // Arrows are a Mac Magic Keyboard cluster: ↑/↓ stacked half-height in the
-  // center column, ← → on the bottom half flanking ↓ (the two top corners,
-  // above ← and →, are empty). Rendered by role "arrows" into a 2×3 grid.
+  // Row 6: Ctl Alt Space Alt [←↓→]  (1.5 + 1.5 + 7.5 + 1.5 + 3.0 = 15.0)
+  // ←↓→ fill the cell at full row height (role "arrows"); ↑ lives on R5 above ↓
+  // so the four keys form a full-size inverted-T. Position/width unchanged.
   [
     { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
@@ -449,7 +450,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
     // a self-contained grid of four real arrow keys, wired to the same press
     // handlers as every letter key. Only the container class (and thus the CSS
     // grid-template-areas) differs; the buttons are identical.
-    if (k.role === "arrows" || k.role === "arrowsMobile") {
+    if (k.role === "arrows" || k.role === "arrowsMobile" || k.role === "arrowUp") {
       const arrow = (sc: number, label: string, sub: string) => {
         const aid = `${id}-${sub}`;
         const pressed = pressedRef.current.has(aid);
@@ -475,13 +476,25 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
           </button>
         );
       };
+      const span = { gridColumn: `span ${Math.round((k.flex ?? 1) * 4)}` };
+      // Desktop ↑ alone on the Shift line (centered over ↓ below).
+      if (k.role === "arrowUp") {
+        return <div key={id} className="vkb-arrows-up" style={span}>{arrow(SC.UP, "↑", "up")}</div>;
+      }
+      // Mobile: all four in one cluster (← → flanks, ↑/↓ stacked center).
+      if (k.role === "arrowsMobile") {
+        return (
+          <div key={id} className="vkb-arrows-lr" style={span}>
+            {arrow(SC.UP, "↑", "up")}
+            {arrow(SC.LEFT, "←", "left")}
+            {arrow(SC.DOWN, "↓", "down")}
+            {arrow(SC.RIGHT, "→", "right")}
+          </div>
+        );
+      }
+      // Desktop bottom row: ← ↓ → at full row height (↑ is the R5 cell above).
       return (
-        <div
-          key={id}
-          className={k.role === "arrowsMobile" ? "vkb-arrows-lr" : "vkb-arrows"}
-          style={{ gridColumn: `span ${Math.round((k.flex ?? 1) * 4)}` }}
-        >
-          {arrow(SC.UP, "↑", "up")}
+        <div key={id} className="vkb-arrows" style={span}>
           {arrow(SC.LEFT, "←", "left")}
           {arrow(SC.DOWN, "↓", "down")}
           {arrow(SC.RIGHT, "→", "right")}
