@@ -55,7 +55,41 @@
 
 import type React from "react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import {
+  ArrowBigUp,
+  ArrowBigUpDash,
+  ArrowRightToLine,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  CornerDownLeft,
+  Delete,
+  type LucideIcon,
+} from "lucide-react";
 import { HANGUL_LABELS, HANGUL_SHIFT_LABELS, SC, SHIFT_LABELS } from "../lib/dos-keymap";
+
+// Glyph keys that read clearer as icons than text. Backspace/Shift/Caps/Tab/
+// Return get their conventional keycap symbols (lucide); arrows render as
+// carets. Esc/F-keys/Space/Ctrl/Alt stay as text — no clean lucide glyph and
+// the words read fine. Scancodes here are unique to one key each, so a map by
+// code is unambiguous.
+const KEY_ICON: Readonly<Record<number, LucideIcon>> = {
+  [SC.BS]: Delete,
+  [SC.SHIFT]: ArrowBigUp,
+  [SC.CAPSLOCK]: ArrowBigUpDash,
+  [SC.TAB]: ArrowRightToLine,
+  [SC.ENTER]: CornerDownLeft,
+};
+const ARROW_ICON: Readonly<Record<string, LucideIcon>> = {
+  up: ChevronUp,
+  down: ChevronDown,
+  left: ChevronLeft,
+  right: ChevronRight,
+};
+// Keycap icons sit a touch larger than the 13px legends; thin stroke matches
+// the toolbar family. currentColor inherits the key's (and pressed/latched) fg.
+const KEY_ICON_PROPS = { size: 19, strokeWidth: 1.75, "aria-hidden": true } as const;
 
 export interface VirtualKeyboardProps {
   onKeyDown: (scancode: number) => void;
@@ -418,6 +452,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
       const arrow = (sc: number, label: string, sub: string) => {
         const aid = `${id}-${sub}`;
         const pressed = pressedRef.current.has(aid);
+        const ArrowIcon = ARROW_ICON[sub];
         return (
           <button
             key={aid}
@@ -435,7 +470,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
             onPointerLeave={(e) => { if (e.buttons !== 0) handleUp(aid, sc, false, false); }}
             onContextMenu={(e) => e.preventDefault()}
           >
-            {label}
+            <ArrowIcon {...KEY_ICON_PROPS} />
           </button>
         );
       };
@@ -529,6 +564,9 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
     //  · single — neither: the label, centered (Esc, Tab, Space, F-keys…).
     const corner = hangul != null;
     const dual = !corner && showShift;
+    // Single-glyph control/modifier keys (Backspace/Shift/Caps/Tab/Return)
+    // render their lucide keycap icon in place of the text label.
+    const KeyIcon = !corner && !dual ? KEY_ICON[k.code] : undefined;
 
     return (
       <button
@@ -568,6 +606,8 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
             <span className="vkb-key__dual-sym">{shiftGlyph}</span>
             <span className="vkb-key__dual-num">{k.label}</span>
           </span>
+        ) : KeyIcon ? (
+          <KeyIcon {...KEY_ICON_PROPS} />
         ) : (
           k.label
         )}

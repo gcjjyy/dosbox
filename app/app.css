@@ -398,6 +398,196 @@ html { color-scheme: dark; }
   border-color: rgba(91, 141, 239, 0.4);
 }
 
+/* ── Options dialog ──────────────────────────────────────────────────
+   Themed to the navy/mono system (the old raw-Tailwind gray modal clashed
+   with the rest of the chrome). One consistent row rhythm: each setting is a
+   40px row with a left mono label and a right-aligned control. */
+
+.opt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(5, 9, 18, 0.62);
+  backdrop-filter: blur(2px);
+  animation: opt-overlay-in 140ms ease both;
+}
+@keyframes opt-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.opt-dialog {
+  width: 340px;
+  max-width: 100%;
+  padding: 6px 18px 14px;
+  background: var(--color-navy-bg-lift);
+  border: 1px solid var(--color-navy-line);
+  border-radius: 10px;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 24px 60px -16px rgba(0, 0, 0, 0.7);
+  color: var(--color-navy-text);
+  font-family: var(--font-mono);
+  animation: opt-dialog-in 160ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+@keyframes opt-dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.opt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  border-bottom: 1px solid var(--color-navy-line);
+  margin-bottom: 4px;
+}
+.opt-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-navy-muted);
+}
+.opt-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-navy-muted);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.opt-close:hover {
+  color: var(--color-navy-text);
+  background: var(--color-navy-bg);
+  border-color: var(--color-navy-line);
+}
+.opt-close:focus-visible {
+  outline: none;
+  border-color: var(--color-navy-accent);
+}
+
+.opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 48px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-navy-line) 55%, transparent);
+}
+.opt-row--last { border-bottom: none; }
+.opt-label {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--color-navy-muted);
+  white-space: nowrap;
+}
+
+/* Cycles stepper — square buttons flanking a fixed-width tabular value. */
+.opt-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.opt-step-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-navy-line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-navy-text);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+.opt-step-btn:hover:not(:disabled) {
+  border-color: #2e3d70;
+  background: var(--color-navy-bg);
+}
+.opt-step-btn:focus-visible {
+  outline: none;
+  border-color: var(--color-navy-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-navy-accent) 55%, transparent);
+}
+.opt-step-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.opt-stepper-value {
+  min-width: 58px;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--color-navy-text);
+}
+
+/* Segmented control (canvas vertical position). */
+.opt-seg {
+  display: inline-flex;
+  border: 1px solid var(--color-navy-line);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.opt-seg-btn {
+  min-width: 44px;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-left: 1px solid var(--color-navy-line);
+  background: transparent;
+  color: var(--color-navy-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.opt-seg-btn:first-child { border-left: none; }
+.opt-seg-btn:hover:not(.opt-seg-btn--active) {
+  background: var(--color-navy-bg);
+  color: var(--color-navy-text);
+}
+.opt-seg-btn--active {
+  background: var(--color-navy-accent);
+  color: #050912;
+  font-weight: 600;
+}
+.opt-seg-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--color-navy-accent);
+}
+
+/* Opacity slider — native range tinted to the accent + tabular % readout. */
+.opt-range-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.opt-range {
+  width: 132px;
+  accent-color: var(--color-navy-accent);
+  cursor: pointer;
+}
+.opt-range-val {
+  min-width: 38px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-navy-text);
+}
+
 /* ── Virtual keyboard (glass overlay) ─────────────────────────────── */
 
 .vkb {
@@ -453,6 +643,12 @@ html { color-scheme: dark; }
 
 .vkb-key {
   position: relative;
+  /* Center the single-glyph content (text label or lucide keycap icon). The
+     corner/dual letter labels are absolutely positioned, so they ignore this
+     flexbox and keep their TL/BR/center placement. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
   min-height: 48px;     /* matches natural cell width at vkb max-width 820 — keeps letter keys ≈1:1 */
   padding: 6px 0;
@@ -721,7 +917,7 @@ html { color-scheme: dark; }
 /* Spinner shown in place of the icon while a save is in flight. */
 .toolbar__spinner {
   animation: toolbar-spin 0.9s linear infinite;
-  transform-origin: 8px 8px;
+  transform-origin: center;
 }
 @keyframes toolbar-spin {
   to { transform: rotate(360deg); }

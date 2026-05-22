@@ -1,5 +1,5 @@
+import { Minus, Plus, X } from "lucide-react";
 import { ResolutionPicker, type ResolutionId } from "./ResolutionPicker";
-import { IconMinus, IconPlus } from "./Toolbar";
 import { CYCLES_MIN, CYCLES_MAX } from "../lib/cpu-cycles";
 import type { CanvasVAlign } from "../lib/options";
 
@@ -22,6 +22,8 @@ const VALIGN_OPTS: { id: CanvasVAlign; label: string }[] = [
   { id: "bottom", label: "아래" },
 ];
 
+const STEP_ICON = { size: 14, strokeWidth: 1.75, "aria-hidden": true } as const;
+
 export function OptionsDialog({
   onClose,
   resolutionId,
@@ -35,66 +37,62 @@ export function OptionsDialog({
   onKeyboardOpacityChange,
 }: OptionsDialogProps) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60" onClick={onClose}>
+    <div className="opt-overlay" onClick={onClose}>
       <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-96 max-w-[calc(100vw-24px)] rounded-lg bg-gray-900 p-6 text-gray-100 shadow-xl"
+        className="opt-dialog"
         role="dialog"
         aria-label="설정"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">설정</h2>
-          <button type="button" onClick={onClose} className="rounded px-2 py-1 text-sm hover:bg-gray-800" aria-label="닫기">✕</button>
-        </div>
+        <header className="opt-header">
+          <span className="opt-title">설정</span>
+          <button type="button" className="opt-close" onClick={onClose} aria-label="닫기">
+            <X size={15} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        </header>
 
-        {/* Resolution */}
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <span className="text-sm text-gray-300">해상도</span>
+        <div className="opt-row">
+          <span className="opt-label">해상도</span>
           <ResolutionPicker value={resolutionId} onChange={onResolutionChange} />
         </div>
 
-        {/* CPU cycles */}
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <span className="text-sm text-gray-300">CPU 속도</span>
-          <div className="flex items-center gap-2">
+        <div className="opt-row">
+          <span className="opt-label">CPU 속도</span>
+          <div className="opt-stepper">
             <button
               type="button"
+              className="opt-step-btn"
               onClick={onCyclesDown}
               disabled={cycles <= CYCLES_MIN}
-              className="grid h-7 w-7 place-items-center rounded border border-gray-700 hover:bg-gray-800 disabled:opacity-40"
               aria-label="CPU 속도 낮추기"
             >
-              <IconMinus />
+              <Minus {...STEP_ICON} />
             </button>
-            <span className="min-w-[64px] text-center text-sm tabular-nums" aria-live="polite">
+            <span className="opt-stepper-value" aria-live="polite">
               {cycles.toLocaleString()}
             </span>
             <button
               type="button"
+              className="opt-step-btn"
               onClick={onCyclesUp}
               disabled={cycles >= CYCLES_MAX}
-              className="grid h-7 w-7 place-items-center rounded border border-gray-700 hover:bg-gray-800 disabled:opacity-40"
               aria-label="CPU 속도 높이기"
             >
-              <IconPlus />
+              <Plus {...STEP_ICON} />
             </button>
           </div>
         </div>
 
-        {/* Canvas vertical alignment */}
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <span className="text-sm text-gray-300">화면 세로 위치</span>
-          <div className="flex overflow-hidden rounded border border-gray-700" role="group" aria-label="화면 세로 위치">
+        <div className="opt-row">
+          <span className="opt-label">화면 세로 위치</span>
+          <div className="opt-seg" role="group" aria-label="화면 세로 위치">
             {VALIGN_OPTS.map((o) => (
               <button
                 key={o.id}
                 type="button"
+                className={`opt-seg-btn${canvasVAlign === o.id ? " opt-seg-btn--active" : ""}`}
                 onClick={() => onCanvasVAlignChange(o.id)}
                 aria-pressed={canvasVAlign === o.id}
-                className={
-                  "px-3 py-1 text-sm " +
-                  (canvasVAlign === o.id ? "bg-emerald-600 text-white" : "hover:bg-gray-800")
-                }
               >
                 {o.label}
               </button>
@@ -102,11 +100,11 @@ export function OptionsDialog({
           </div>
         </div>
 
-        {/* Keyboard opacity */}
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-sm text-gray-300">키보드 투명도</span>
-          <div className="flex items-center gap-2">
+        <div className="opt-row opt-row--last">
+          <span className="opt-label">키보드 투명도</span>
+          <div className="opt-range-wrap">
             <input
+              className="opt-range"
               type="range"
               min={0}
               max={1}
@@ -114,11 +112,8 @@ export function OptionsDialog({
               value={keyboardOpacity}
               onChange={(e) => onKeyboardOpacityChange(Number(e.target.value))}
               aria-label="키보드 투명도"
-              className="w-40"
             />
-            <span className="min-w-[36px] text-right text-sm tabular-nums">
-              {Math.round(keyboardOpacity * 100)}%
-            </span>
+            <span className="opt-range-val">{Math.round(keyboardOpacity * 100)}%</span>
           </div>
         </div>
       </div>
