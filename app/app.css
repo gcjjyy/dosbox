@@ -415,7 +415,7 @@ html { color-scheme: dark; }
   gap: 5px;
   padding: 10px;
 
-  background: rgba(10, 15, 31, 0.72);
+  background: rgba(10, 15, 31, calc(0.72 * var(--vkb-bg-opacity, 1)));
 
   border: 1px solid rgba(91, 141, 239, 0.18);
   border-radius: 12px;
@@ -459,7 +459,7 @@ html { color-scheme: dark; }
 
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, calc(0.03 * var(--vkb-bg-opacity, 1)));
   color: var(--color-navy-text);
 
   font-family: var(--font-mono);
@@ -529,7 +529,7 @@ html { color-scheme: dark; }
 .vkb-key__dual-sym { opacity: 0.4; }
 @media (hover: hover) {
   .vkb-key:hover {
-    background: rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, calc(0.07 * var(--vkb-bg-opacity, 1)));
     border-color: rgba(255, 255, 255, 0.14);
   }
 }

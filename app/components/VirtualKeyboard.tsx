@@ -53,6 +53,7 @@
 // handler wraps the emitted scancode in a synthetic SHIFT down/up so DOS
 // sees the shifted scancode (e.g. tapping `!` emits SHIFT + D1 + SHIFT_up).
 
+import type React from "react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { HANGUL_LABELS, HANGUL_SHIFT_LABELS, SC, SHIFT_LABELS } from "../lib/dos-keymap";
 
@@ -62,6 +63,10 @@ export interface VirtualKeyboardProps {
   /** Desktop only: invoked by the "hide keyboard" key in the Esc/F-row.
    *  When omitted, that key is not rendered. */
   onHide?: () => void;
+  /** 0..1 — scales the keyboard panel/key background alpha via the
+   *  --vkb-bg-opacity CSS var. Borders and legends stay fully opaque.
+   *  Default 1 (no change). */
+  bgOpacity?: number;
 }
 
 type KeyDef =
@@ -335,7 +340,7 @@ function useIsMobile(): boolean {
   return isMobile;
 }
 
-export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide }: VirtualKeyboardProps) {
+export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: VirtualKeyboardProps) {
   // Refs hold authoritative dedupe state — mutated synchronously
   // inside event handlers so two pointer events arriving before React
   // re-renders can't both emit the same scancode. setRender bumps a
@@ -580,7 +585,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide }: VirtualKeyboardP
 
   if (isMobile) {
     return (
-      <div className="vkb" role="group" aria-label="DOS 가상 키보드">
+      <div className="vkb" role="group" aria-label="DOS 가상 키보드" style={{ "--vkb-bg-opacity": bgOpacity } as React.CSSProperties}>
         <div className="vkb-content">
           {renderRow(MOBILE_CONTROL_ROW, "ctrl")}
           {renderRow(MOBILE_TOP_ROW, "fkeys")}
