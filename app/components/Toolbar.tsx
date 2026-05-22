@@ -26,10 +26,10 @@ export interface ToolbarProps {
   onSave: () => void;
 }
 
-// lucide icons tuned to the toolbar's thin-stroke family: 15px glyph, 1.75
+// lucide icons tuned to the toolbar's thin-stroke family: 13px glyph, 1.75
 // stroke inside the 26px chrome. (The old hand-rolled set was 14px @ 1.2 on a
 // 16 viewBox; 1.75/24 ≈ the same perceived weight.)
-const ICON = { size: 15, strokeWidth: 1.75, "aria-hidden": true } as const;
+const ICON = { size: 13, strokeWidth: 1.75, "aria-hidden": true } as const;
 
 export function Toolbar({
   isAdmin,

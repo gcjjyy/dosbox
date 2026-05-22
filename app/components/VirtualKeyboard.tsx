@@ -89,7 +89,7 @@ const ARROW_ICON: Readonly<Record<string, LucideIcon>> = {
 };
 // Keycap icons sit a touch larger than the 13px legends; thin stroke matches
 // the toolbar family. currentColor inherits the key's (and pressed/latched) fg.
-const KEY_ICON_PROPS = { size: 19, strokeWidth: 1.75, "aria-hidden": true } as const;
+const KEY_ICON_PROPS = { size: 16, strokeWidth: 1.75, "aria-hidden": true } as const;
 
 export interface VirtualKeyboardProps {
   onKeyDown: (scancode: number) => void;
@@ -216,19 +216,20 @@ const DESKTOP_ROWS: KeyDef[][] = [
 
 // R0: the keys that don't belong on a clean QWERTY block — Esc/Tab/Caps plus
 // Shift and RETURN lifted off the letter rows, then F11/F12 bumped up so the
-// F-row can be a clean 10. Esc/Tab/Caps/Shift at flex 2.25 (span 9), RETURN
-// flex 3 (span 12, room for the word), F11/F12 at flex 1.5 (span 6, normal
-// key width) = 15. Punctuation is gone from the main tabs (Sym page only).
-// Backspace (⌫) stays on the letter row (R5, right of M). Shift is a sticky
-// modifier; Caps is momentary (DOS tracks toggle).
+// F-row can be a clean 10. Layout (L→R): Esc/Tab/Caps · F11/F12 (rarely used,
+// tucked in the middle) · Shift/RETURN pushed to the right edge, where the
+// thumb expects the modifier + Enter. Esc/Tab/Caps/Shift at flex 2.25 (span 9),
+// RETURN flex 3 (span 12), F11/F12 at flex 1.5 (span 6) = 15. Punctuation is
+// gone from the main tabs (Sym page only). Backspace (⌫) stays on the letter
+// row (R5, right of M). Shift is a sticky modifier; Caps is momentary.
 const MOBILE_CONTROL_ROW: KeyDef[] = [
   { code: SC.ESC, label: "Esc", flex: 2.25, modLook: true },
   { code: SC.TAB, label: "Tab", flex: 2.25, modLook: true },
   { code: SC.CAPSLOCK, label: "Caps", flex: 2.25, modLook: true },
-  { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
-  { code: SC.ENTER, label: "RETURN", flex: 3, modLook: true },
   { code: SC.F11, label: "F11", flex: 1.5 },
   { code: SC.F12, label: "F12", flex: 1.5 },
+  { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
+  { code: SC.ENTER, label: "RETURN", flex: 3, modLook: true },
 ];
 
 // R1: F1..F10 — mode-invariant. 10 keys at flex 1.5 (span 6) = 60, so each
@@ -573,6 +574,10 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
         key={id}
         type="button"
         tabIndex={-1}
+        // Icon-only keys (Backspace/Shift/Caps/Tab/Return) have no text node, so
+        // the lucide glyph (aria-hidden) leaves the button without an accessible
+        // name — restore it from the original label.
+        aria-label={KeyIcon ? k.label : undefined}
         aria-pressed={isPressed || (isShiftKey && shiftLatched)}
         className={
           "vkb-key" +

@@ -22,7 +22,7 @@ const VALIGN_OPTS: { id: CanvasVAlign; label: string }[] = [
   { id: "bottom", label: "아래" },
 ];
 
-const STEP_ICON = { size: 14, strokeWidth: 1.75, "aria-hidden": true } as const;
+const STEP_ICON = { size: 12, strokeWidth: 1.75, "aria-hidden": true } as const;
 
 export function OptionsDialog({
   onClose,
@@ -47,7 +47,7 @@ export function OptionsDialog({
         <header className="opt-header">
           <span className="opt-title">설정</span>
           <button type="button" className="opt-close" onClick={onClose} aria-label="닫기">
-            <X size={15} strokeWidth={1.75} aria-hidden="true" />
+            <X size={13} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </header>
 
