@@ -777,31 +777,36 @@ html { color-scheme: dark; }
 }
 /* Desktop arrow cluster — a full-height inverted-T spanning two rows. The ↑
    key sits on the Shift line (R5) in its own .vkb-arrows-up cell (which
-   replaced the right Shift); ←↓→ fill R6 at full row height. Each arrow is now
-   a whole key tall (was half-height), so the small ↑/↓ are easy to hit. */
-.vkb-arrows {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-areas: "left down right";
-  gap: 4px;
-  min-width: 0;
-}
-/* ↑ centered over ↓. The 2fr/4fr/4fr split lands the up key on the same
-   on-screen columns as ↓ below; this R5 cell (the old right-Shift slot, now
-   shrunk to widen the left Shift) is two 60-grid columns narrower than the
-   ←↓→ cell on R6, so the up track starts two columns in. */
+   replaced the right Shift); ←↓→ fill R6 at full row height. Each arrow is a
+   whole key tall, so the ↑/↓ are easy to hit.
+
+   Both cells use `grid-template-columns: subgrid`, inheriting the parent row's
+   60-col tracks AND its 5px gaps. So every arrow placed on `span 4` parent
+   columns is *exactly* one letter-key wide (4 tracks + 3×5px), and ↑/↓ both
+   land on parent cols 53..56 → identical width, perfect alignment, at every
+   screen size. (Nested fr grids couldn't do this: their own gaps added a
+   constant offset the fr ratios can't cancel — hence the old ~1px drift.)
+
+   R6 ←↓→ cell spans parent cols 49..60: ← 49-52, ↓ 53-56, → 57-60.
+   R5 ↑ cell spans parent cols 51..60: ↑ at relative cols 3..6 = parent 53-56. */
+.vkb-arrows,
 .vkb-arrows-up {
   display: grid;
-  grid-template-columns: 2fr 4fr 4fr;
-  grid-template-areas: ". up .";
-  gap: 4px;
+  grid-template-columns: subgrid;
   min-width: 0;
 }
+.vkb-arrows .vkb-arrow--left  { grid-column: 1 / 5; }
+.vkb-arrows .vkb-arrow--down  { grid-column: 5 / 9; }
+.vkb-arrows .vkb-arrow--right { grid-column: 9 / 13; }
+.vkb-arrows-up .vkb-arrow--up { grid-column: 3 / 7; }
 .vkb-arrow {
-  min-height: 0;
+  /* Inherit .vkb-key's min-height (48px) so desktop arrows are a full key tall.
+     Mobile re-sets min-height: 0 on `.vkb-arrows-lr .vkb-arrow` below. */
   padding: 0;
   font-size: 13px;
 }
+/* Mobile (.vkb-arrows-lr) places its arrows by named grid areas; desktop
+   overrides above win by specificity. */
 .vkb-arrow--up { grid-area: up; }
 .vkb-arrow--left { grid-area: left; }
 .vkb-arrow--down { grid-area: down; }

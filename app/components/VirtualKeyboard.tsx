@@ -197,8 +197,11 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: -1, label: "", role: "arrowUp", flex: 2.5 },
   ],
   // Row 6: Ctl Alt Space Alt [←↓→]  (1.5 + 1.5 + 7.5 + 1.5 + 3.0 = 15.0)
-  // ←↓→ fill the cell at full row height (role "arrows"); ↑ lives on R5 above ↓
-  // so the four keys form a full-size inverted-T. Position/width unchanged.
+  // ←↓→ fill a span-12 cell (cols 49..60) as three letter-width keys; the CSS
+  // uses `grid-template-columns: subgrid` so each arrow is exactly one letter
+  // key wide (span 4 of the parent 60-col grid, parent's 5px gap). ↑ lives on
+  // R5 directly above ↓ (both on parent cols 53..56 via subgrid) so the four
+  // keys form a full-size, pixel-aligned inverted-T.
   [
     { code: SC.CTRL, label: "Ctrl", flex: 1.5, modifier: true },
     { code: SC.ALT, label: "Alt", flex: 1.5, modifier: true },
