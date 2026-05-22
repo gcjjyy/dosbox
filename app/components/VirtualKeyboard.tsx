@@ -598,7 +598,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
 
   // Desktop: 6 rows of ANSI-staggered keys. Arrows are inline in rows 5/6.
   return (
-    <div className="vkb" role="group" aria-label="DOS 가상 키보드">
+    <div className="vkb" role="group" aria-label="DOS 가상 키보드" style={{ "--vkb-bg-opacity": bgOpacity } as React.CSSProperties}>
       {DESKTOP_ROWS.map((row, ri) => renderRow(row, String(ri)))}
     </div>
   );
