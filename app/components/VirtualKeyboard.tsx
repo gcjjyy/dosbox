@@ -220,17 +220,17 @@ const DESKTOP_ROWS: KeyDef[][] = [
 // else is invariant so muscle memory survives a page toggle.
 
 // R0: the keys that don't belong on a clean QWERTY block — Esc/Tab/Caps, the
-// two extra F-keys, and Backspace. Shift and Enter moved down to the letter row
-// (R5) where a real keyboard puts them (Shift left of Z, Enter at the lower
-// right by the arrows), which frees this row to spread out: Esc/Tab/Caps 2.5,
-// F11/F12 2 (rarely used), ⌫ 3.5 (wide, top-right) = 15.
+// two extra F-keys, Backspace, and a hide-keyboard key at the far right. Shift
+// and Enter live on the letter row (R5). F11/F12 are a normal key width (1.5,
+// span 6) like every other key; the rest: Esc/Tab/Caps 2.5, ⌫ 2.5, hide 2 = 15.
 const MOBILE_CONTROL_ROW: KeyDef[] = [
   { code: SC.ESC, label: "Esc", flex: 2.5, modLook: true },
   { code: SC.TAB, label: "Tab", flex: 2.5, modLook: true },
   { code: SC.CAPSLOCK, label: "Caps", flex: 2.5, modLook: true },
-  { code: SC.F11, label: "F11", flex: 2 },
-  { code: SC.F12, label: "F12", flex: 2 },
-  { code: SC.BS, label: "⌫", flex: 3.5 },
+  { code: SC.F11, label: "F11", flex: 1.5 },
+  { code: SC.F12, label: "F12", flex: 1.5 },
+  { code: SC.BS, label: "⌫", flex: 2.5 },
+  { code: -1, label: "▾", role: "hide", flex: 2 },
 ];
 
 // R1: F1..F10 — mode-invariant. 10 keys at flex 1.5 (span 6) = 60, so each
@@ -503,7 +503,9 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
       );
     }
 
-    // Hide-keyboard key (desktop Esc/F-row) — collapses the VKB; no DOS key.
+    // Hide-keyboard key — collapses the VKB (no DOS key). On the desktop
+    // Esc/F-row and at the mobile R0 right edge; the chevron-down reads as
+    // "slide the keyboard away".
     if (k.role === "hide") {
       return (
         <button
@@ -519,7 +521,7 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
           }}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {k.label}
+          <ChevronDown {...KEY_ICON_PROPS} />
         </button>
       );
     }
