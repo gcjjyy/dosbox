@@ -180,17 +180,18 @@ const DESKTOP_ROWS: KeyDef[][] = [
     { code: SC.SEMICOLON, label: ";" }, { code: SC.QUOTE, label: "'" },
     { code: SC.ENTER, label: "RETURN", flex: 2 },
   ],
-  // Row 5: Sh Z..M , . / ↑  (2.25 + 7 + 1 + 1 + 1 + 2.75 = 15.0)
-  // Left Shift 2.25 keeps Z between A and S. The old right Shift was dropped
-  // (redundant on a virtual keyboard) and its 2.75 slot now holds the ↑ key —
-  // the top of an inverted-T whose ←↓→ sit directly below on R6.
+  // Row 5: Sh Z..M , . / ↑  (2.5 + 7 + 1 + 1 + 1 + 2.5 = 15.0)
+  // Left Shift 2.5 lands Z's center on the A|S boundary above — a clean
+  // half-key ANSI stagger (matches the +2-col offsets Q→A→Z). The old right
+  // Shift was dropped; its slot (now 2.5, shrunk to make room for the wider
+  // left Shift) holds the ↑ key — top of an inverted-T whose ←↓→ sit below.
   [
-    { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
+    { code: SC.SHIFT, label: "Shift", flex: 2.5, modifier: true },
     { code: SC.Z, label: "Z" }, { code: SC.X, label: "X" }, { code: SC.C, label: "C" },
     { code: SC.V, label: "V" }, { code: SC.B, label: "B" }, { code: SC.N, label: "N" },
     { code: SC.M, label: "M" },
     { code: SC.COMMA, label: "," }, { code: SC.PERIOD, label: "." }, { code: SC.SLASH, label: "/" },
-    { code: -1, label: "", role: "arrowUp", flex: 2.75 },
+    { code: -1, label: "", role: "arrowUp", flex: 2.5 },
   ],
   // Row 6: Ctl Alt Space Alt [←↓→]  (1.5 + 1.5 + 7.5 + 1.5 + 3.0 = 15.0)
   // ←↓→ fill the cell at full row height (role "arrows"); ↑ lives on R5 above ↓

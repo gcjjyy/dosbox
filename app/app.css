@@ -769,12 +769,13 @@ html { color-scheme: dark; }
   gap: 4px;
   min-width: 0;
 }
-/* ↑ centered over ↓. The 3fr/4fr/4fr split lands the up key on the same
-   on-screen columns as ↓ below, even though this R5 cell (which took the old
-   right-Shift slot) is one 60-grid column narrower than the ←↓→ cell on R6. */
+/* ↑ centered over ↓. The 2fr/4fr/4fr split lands the up key on the same
+   on-screen columns as ↓ below; this R5 cell (the old right-Shift slot, now
+   shrunk to widen the left Shift) is two 60-grid columns narrower than the
+   ←↓→ cell on R6, so the up track starts two columns in. */
 .vkb-arrows-up {
   display: grid;
-  grid-template-columns: 3fr 4fr 4fr;
+  grid-template-columns: 2fr 4fr 4fr;
   grid-template-areas: ". up .";
   gap: 4px;
   min-width: 0;
