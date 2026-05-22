@@ -563,8 +563,10 @@ export class DosEmulator {
         }
         this.twoFingerArmed = true;
         // Anchor the right click at the first finger's last known position.
+        // Copy (not alias) the map entry — move events replace it with a fresh
+        // object, but a future mutate-in-place change must not corrupt this.
         const first = this.activeTouches.get(this.firstTouchId);
-        if (first) this.rightClickPos = first;
+        if (first) this.rightClickPos = { ...first };
       }
       return;
     }
