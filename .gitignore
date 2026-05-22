@@ -16,3 +16,6 @@
 
 # Superpowers brainstorming visual companion mockups
 /.superpowers/
+
+# Local Claude Code config
+/.claude/
