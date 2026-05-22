@@ -176,6 +176,14 @@ export class DosEmulator {
   private texH = 0;
   private rafId = 0;
 
+  // Touch gesture state for two-finger right-click. Mouse/pen pointers bypass
+  // all of this and use the button-index path in handlePointer.
+  private activeTouches = new Map<number, { x: number; y: number }>();
+  private firstTouchId = -1;
+  private leftTouchDown = false;
+  private twoFingerArmed = false;
+  private rightClickPos = { x: 0.5, y: 0.5 };
+
   private readonly onKeyDown: (e: KeyboardEvent) => void;
   private readonly onKeyUp: (e: KeyboardEvent) => void;
   private readonly onPointerDown: (e: PointerEvent) => void;
@@ -311,6 +319,7 @@ export class DosEmulator {
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
+    this.canvas.addEventListener("pointercancel", this.onPointerUp);
     // Suppress browser right-click menu on the DOS canvas
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
@@ -507,18 +516,94 @@ export class DosEmulator {
     const ry = (e.clientY - rect.top) / rect.height;
     const cx = Math.max(0, Math.min(1, rx));
     const cy = Math.max(0, Math.min(1, ry));
+
+    if (e.pointerType === "touch") {
+      this.handleTouch(e, kind, cx, cy);
+      return;
+    }
+
+    // Mouse / pen — unchanged button-index behavior.
     this.ci.sendMouseMotion(cx, cy);
     if (kind === "move") {
       this.ci.sendMouseSync();
       return;
     }
     // PointerEvent.button → DOSBox button index:
-    //   browser 0 (left)   → 0
-    //   browser 2 (right)  → 1
-    //   browser 1 (middle) → 2
+    //   browser 0 (left) → 0, browser 2 (right) → 1, browser 1 (middle) → 2
     const button = e.button === 2 ? 1 : e.button === 1 ? 2 : 0;
     this.ci.sendMouseButton(button, kind === "down");
     this.ci.sendMouseSync();
+  }
+
+  // Touch gesture model:
+  //  · 1 finger  → move pointer + hold LEFT (so taps click and drags work).
+  //  · 2 fingers → cancel the held LEFT and arm a RIGHT click; the right click
+  //    (down+up at the first finger's position) fires once when a finger lifts.
+  //  · 3+ fingers→ ignored (no extra buttons).
+  private handleTouch(e: PointerEvent, kind: "down" | "move" | "up", cx: number, cy: number): void {
+    const ci = this.ci;
+    if (!ci) return;
+
+    if (kind === "down") {
+      this.activeTouches.set(e.pointerId, { x: cx, y: cy });
+      const count = this.activeTouches.size;
+      if (count === 1) {
+        this.firstTouchId = e.pointerId;
+        this.rightClickPos = { x: cx, y: cy };
+        ci.sendMouseMotion(cx, cy);
+        ci.sendMouseButton(0, true);
+        ci.sendMouseSync();
+        this.leftTouchDown = true;
+      } else if (count === 2) {
+        // Second finger → this is a right-click gesture. Undo the left press.
+        if (this.leftTouchDown) {
+          ci.sendMouseButton(0, false);
+          ci.sendMouseSync();
+          this.leftTouchDown = false;
+        }
+        this.twoFingerArmed = true;
+        // Anchor the right click at the first finger's last known position.
+        const first = this.activeTouches.get(this.firstTouchId);
+        if (first) this.rightClickPos = first;
+      }
+      return;
+    }
+
+    if (kind === "move") {
+      if (this.activeTouches.has(e.pointerId)) {
+        this.activeTouches.set(e.pointerId, { x: cx, y: cy });
+      }
+      // Single-finger drag only (don't move the cursor mid two-finger gesture).
+      if (!this.twoFingerArmed && this.leftTouchDown && e.pointerId === this.firstTouchId) {
+        ci.sendMouseMotion(cx, cy);
+        ci.sendMouseSync();
+      }
+      return;
+    }
+
+    // kind === "up" (also reused for pointercancel via the listener wiring)
+    this.activeTouches.delete(e.pointerId);
+
+    if (this.twoFingerArmed) {
+      // Fire one right click, then disarm. Remaining finger lifts are swallowed.
+      this.twoFingerArmed = false;
+      const p = this.rightClickPos;
+      ci.sendMouseMotion(p.x, p.y);
+      ci.sendMouseButton(1, true);
+      ci.sendMouseSync();
+      ci.sendMouseButton(1, false);
+      ci.sendMouseSync();
+    } else if (this.leftTouchDown && this.activeTouches.size === 0) {
+      ci.sendMouseButton(0, false);
+      ci.sendMouseSync();
+      this.leftTouchDown = false;
+    }
+
+    if (this.activeTouches.size === 0) {
+      this.firstTouchId = -1;
+      this.twoFingerArmed = false;
+      this.leftTouchDown = false;
+    }
   }
 
   // ── Public API (used by VirtualKeyboard) ─────────────────────────
@@ -550,6 +635,7 @@ export class DosEmulator {
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
+    this.canvas.removeEventListener("pointercancel", this.onPointerUp);
     if (this.gestureUnlock) {
       window.removeEventListener("pointerdown", this.gestureUnlock, true);
       window.removeEventListener("keydown", this.gestureUnlock, true);
