@@ -45,6 +45,14 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     ciRef.current = ci;
     // Restore the saved cycles value by replaying cycleup/down from the baked
     // default (the shared bundle can't be re-baked per user). Runs once.
+    //
+    // Two ordering invariants make optionsRef + emulatorRef reliable here:
+    //  · options are hydrated from localStorage in useOptions' mount useEffect,
+    //    which runs together with the `mounted` effect that gates DosFrame —
+    //    so DosFrame (and thus this onReady) cannot mount before hydration.
+    //  · emulatorRef is set by onEmulator, called synchronously at DosEmulator
+    //    construction; onReady fires only after the async download+extract boot
+    //    chain, so emulatorRef.current is already non-null.
     if (!cyclesAppliedRef.current) {
       cyclesAppliedRef.current = true;
       const { dir, count } = cyclesReplay(optionsRef.current.cycles);
