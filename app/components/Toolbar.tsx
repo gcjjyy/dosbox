@@ -8,6 +8,7 @@ import {
   Power,
   LoaderCircle,
 } from "lucide-react";
+import { version } from "../../package.json";
 
 export interface ToolbarProps {
   isAdmin: boolean;
@@ -50,6 +51,8 @@ export function Toolbar({
       <h1 className="toolbar__brand">
         <span className="toolbar__brand-name">DOSBOX</span>
         <span className="toolbar__brand-cursor" aria-hidden="true">_</span>
+        <span className="toolbar__brand-dot" aria-hidden="true" />
+        <span className="toolbar__brand-version">v{version}</span>
       </h1>
       <div className="toolbar__right">
         <button
