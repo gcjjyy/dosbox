@@ -12,9 +12,9 @@ describe("options", () => {
     expect(parseOptions("123")).toEqual(DEFAULT_OPTIONS);
   });
 
-  it("defaults: cycles 8000, valign middle, opacity 1, resolution 640x480", () => {
+  it("defaults: cycles 20000, valign middle, opacity 1, resolution 640x480", () => {
     expect(DEFAULT_OPTIONS).toEqual({
-      cycles: 8000,
+      cycles: 20000,
       resolutionId: "640x480",
       canvasVAlign: "middle",
       keyboardOpacity: 1,

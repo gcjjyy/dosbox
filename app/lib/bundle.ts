@@ -30,10 +30,14 @@ export const DOSBOX_CONF = [
   "memsize=16",
   "",
   "[cpu]",
-  "core=auto",
-  "cputype=486_prefetch",
-  // 486DX2-66 class. cycleup/cycledown are absolute (>=100) so a single
-  // toolbar click is exactly +/-CYCLES_STEP, matching the client's tracker.
+  // core/cputype intentionally left at DOSBox-X defaults (core=auto,
+  // cputype=auto). We used to pin cputype=486_prefetch, but the WASM build's
+  // own help notes "prefetch queue emulation requires the normal core" while
+  // core=auto selects the dynamic core for protected-mode code — that mismatch
+  // caused intermittent in-game crashes (e.g. 용의기사2/FD2) under the web
+  // emulator that never happened in native DOSBox 0.74-3. cycleup/cycledown are
+  // absolute (>=100) so one toolbar click is exactly +/-CYCLES_STEP, matching
+  // the client's tracker.
   `cycles=fixed ${DEFAULT_CYCLES}`,
   `cycleup=${CYCLES_STEP}`,
   `cycledown=${CYCLES_STEP}`,

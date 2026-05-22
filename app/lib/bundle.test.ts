@@ -86,8 +86,8 @@ describe("bundle", () => {
 
   it("pins cycles to the default with an absolute step", async () => {
     const { DOSBOX_CONF } = await import("./bundle");
-    expect(DOSBOX_CONF).toContain("cycles=fixed 8000");
-    expect(DOSBOX_CONF).toContain("cycleup=2000");
-    expect(DOSBOX_CONF).toContain("cycledown=2000");
+    expect(DOSBOX_CONF).toContain("cycles=fixed 20000");
+    expect(DOSBOX_CONF).toContain("cycleup=1000");
+    expect(DOSBOX_CONF).toContain("cycledown=1000");
   });
 });
