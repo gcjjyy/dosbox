@@ -790,16 +790,12 @@ html { color-scheme: dark; }
 .vkb-arrow--down { grid-area: down; }
 .vkb-arrow--right { grid-area: right; }
 
-/* Mobile arrow cluster — ← and → full-height on the flanks, ↑/↓ stacked
-   half-height in the center. All three columns equal width so ↑/↓ are just as
-   wide as ←/→ (the narrow center column read as cramped). */
+/* Mobile arrow cluster — ← ↓ → at full row height, three equal columns. ↑ is a
+   separate key on R5, sitting directly above the center ↓ (inverted-T). */
 .vkb-arrows-lr {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  grid-template-areas:
-    "left up    right"
-    "left down  right";
+  grid-template-areas: "left down right";
   gap: 3px;
   min-width: 0;
 }

@@ -80,6 +80,9 @@ const KEY_ICON: Readonly<Record<number, LucideIcon>> = {
   [SC.CAPSLOCK]: ArrowBigUpDash,
   [SC.TAB]: ArrowRightToLine,
   [SC.ENTER]: CornerDownLeft,
+  // ↑ rendered as a plain key (mobile R5, above ↓) — not part of an arrow
+  // cluster, so it goes through the normal key path and needs its caret here.
+  [SC.UP]: ChevronUp,
 };
 const ARROW_ICON: Readonly<Record<string, LucideIcon>> = {
   up: ChevronUp,
@@ -217,13 +220,13 @@ const DESKTOP_ROWS: KeyDef[][] = [
 // else is invariant so muscle memory survives a page toggle.
 
 // R0: the keys that don't belong on a clean QWERTY block — Esc/Tab/Caps plus
-// Shift and RETURN lifted off the letter rows, then F11/F12 bumped up so the
-// F-row can be a clean 10. Layout (L→R): Esc/Tab/Caps · F11/F12 (rarely used,
-// tucked in the middle) · Shift/RETURN pushed to the right edge, where the
-// thumb expects the modifier + Enter. Esc/Tab/Caps/Shift at flex 2.25 (span 9),
-// RETURN flex 3 (span 12), F11/F12 at flex 1.5 (span 6) = 15. Punctuation is
-// gone from the main tabs (Sym page only). Backspace (⌫) stays on the letter
-// row (R5, right of M). Shift is a sticky modifier; Caps is momentary.
+// Shift/Backspace/Enter lifted off the letter rows, then F11/F12 bumped up so
+// the F-row can be a clean 10. Layout (L→R): Esc/Tab/Caps · F11/F12 (rarely
+// used, tucked in the middle) · Shift · ⌫ · Enter pushed to the right edge.
+// Esc/Tab/Caps/Shift at flex 2.25, F11/F12/⌫/Enter at flex 1.5 = 15. Now that
+// ⌫ and Enter are lucide icons, Enter no longer needs the wide word-slot, so
+// its old 3.0 makes room for ⌫. Backspace moved here off the letter row (R5),
+// whose old ⌫ slot now holds ↑ (above ↓ on R6 — a mobile inverted-T).
 const MOBILE_CONTROL_ROW: KeyDef[] = [
   { code: SC.ESC, label: "Esc", flex: 2.25, modLook: true },
   { code: SC.TAB, label: "Tab", flex: 2.25, modLook: true },
@@ -231,7 +234,8 @@ const MOBILE_CONTROL_ROW: KeyDef[] = [
   { code: SC.F11, label: "F11", flex: 1.5 },
   { code: SC.F12, label: "F12", flex: 1.5 },
   { code: SC.SHIFT, label: "Shift", flex: 2.25, modifier: true },
-  { code: SC.ENTER, label: "RETURN", flex: 3, modLook: true },
+  { code: SC.BS, label: "⌫", flex: 1.5 },
+  { code: SC.ENTER, label: "RETURN", flex: 1.5, modLook: true },
 ];
 
 // R1: F1..F10 — mode-invariant. 10 keys at flex 1.5 (span 6) = 60, so each
@@ -278,16 +282,17 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.L, label: "L", flex: 1.5 },
       { spacer: true, flex: 0.75 },
     ],
-    // R5: Z..M ⌫ — letters + Backspace right of M (its traditional home; only
-    // Shift/Enter moved to R0). A span-6 leading spacer keeps Z at col 6
-    // (between A and S), preserving the Q→A→Z diagonal. ⌫ sits at col 48..54.
+    // R5: Z..M ↑ — letters + the ↑ arrow right of M (Backspace moved to R0).
+    // A span-6 leading spacer keeps Z at col 6 (between A and S), preserving the
+    // Q→A→Z diagonal. ↑ sits at cols 49..54 — exactly the center column of the
+    // R6 arrow cluster below, so ↑ lands directly over ↓ (mobile inverted-T).
     [
       { spacer: true, flex: 1.5 },
       { code: SC.Z, label: "Z", flex: 1.5 }, { code: SC.X, label: "X", flex: 1.5 },
       { code: SC.C, label: "C", flex: 1.5 }, { code: SC.V, label: "V", flex: 1.5 },
       { code: SC.B, label: "B", flex: 1.5 }, { code: SC.N, label: "N", flex: 1.5 },
       { code: SC.M, label: "M", flex: 1.5 },
-      { code: SC.BS, label: "⌫", flex: 1.5 },
+      { code: SC.UP, label: "↑", flex: 1.5 },
       { spacer: true, flex: 1.5 },
     ],
   ],
@@ -333,28 +338,28 @@ const MOBILE_PAGES: Record<Page, KeyDef[][]> = {
       { code: SC.SLASH, label: "/", flex: 1.5 },
       { spacer: true, flex: 0.75 },
     ],
-    // R5: , . ? ⌫ — leftover punctuation + Backspace at col 48..54 (same slot
-    // as abc R5 so ⌫ doesn't jump on toggle). Shift/Enter live on R0. The
-    // span-6 leading spacer matches abc R5.
+    // R5: , . ? ↑ — leftover punctuation + the ↑ arrow at cols 49..54 (same slot
+    // as abc R5 so ↑ doesn't jump on toggle, and it stays above ↓ on R6).
+    // Shift/Backspace/Enter live on R0. The span-6 leading spacer matches abc R5.
     [
       { spacer: true, flex: 1.5 },
       { code: SC.COMMA, label: ",", flex: 1.5 },
       { code: SC.PERIOD, label: ".", flex: 1.5 },
       { code: SC.SLASH, label: "?", flex: 1.5, symShift: true },
       { spacer: true, flex: 6 },
-      { code: SC.BS, label: "⌫", flex: 1.5 },
+      { code: SC.UP, label: "↑", flex: 1.5 },
       { spacer: true, flex: 1.5 },
     ],
   ],
 };
 
-// R6: Ctrl Alt Sym Space [arrows] — always-visible modifier/nav row at the
-// bottom edge. Row sums to flex 15 (= span 60) like every other row, so its
-// keys line up on the same column grid. Ctrl/Alt/Sym are fat (flex 2 → span 8,
-// ~48px); Space takes flex 4.5. The arrow cluster (role "arrowsMobile", flex
-// 4.5 → span 18 = three letter-key widths) splits into three equal columns,
-// so ← ↑↓ → each end up the same ~36px width as a normal QWERTY key. ↑/↓ are
-// stacked half-height in the center column. Sym swaps to "ABC" on the sym page.
+// R6: Ctrl Alt Sym Space [←↓→] — always-visible modifier/nav row at the bottom
+// edge. Row sums to flex 15 (= span 60) like every other row, so its keys line
+// up on the same column grid. Ctrl/Alt/Sym are fat (flex 2 → span 8, ~48px);
+// Space takes flex 4.5. The arrow cluster (role "arrowsMobile", flex 4.5 →
+// span 18 = three letter-key widths) splits into three equal columns of ← ↓ →,
+// each a full-height ~36px key. ↑ lives on R5 directly above the center ↓
+// (cols 49..54), forming an inverted-T. Sym swaps to "ABC" on the sym page.
 const MOBILE_UTIL_ROW: KeyDef[] = [
   { code: SC.CTRL, label: "Ctrl", flex: 2, modifier: true },
   { code: SC.ALT, label: "Alt", flex: 2, modifier: true },
@@ -482,11 +487,10 @@ export function VirtualKeyboard({ onKeyDown, onKeyUp, onHide, bgOpacity = 1 }: V
       if (k.role === "arrowUp") {
         return <div key={id} className="vkb-arrows-up" style={span}>{arrow(SC.UP, "↑", "up")}</div>;
       }
-      // Mobile: all four in one cluster (← → flanks, ↑/↓ stacked center).
+      // Mobile: ← ↓ → in one full-height cluster (↑ is the R5 key above ↓).
       if (k.role === "arrowsMobile") {
         return (
           <div key={id} className="vkb-arrows-lr" style={span}>
-            {arrow(SC.UP, "↑", "up")}
             {arrow(SC.LEFT, "←", "left")}
             {arrow(SC.DOWN, "↓", "down")}
             {arrow(SC.RIGHT, "→", "right")}
