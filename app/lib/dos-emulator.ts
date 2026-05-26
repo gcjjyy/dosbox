@@ -176,13 +176,12 @@ export class DosEmulator {
   private texH = 0;
   private rafId = 0;
 
-  // Touch gesture state for two-finger right-click. Mouse/pen pointers bypass
-  // all of this and use the button-index path in handlePointer.
-  private activeTouches = new Map<number, { x: number; y: number }>();
-  private firstTouchId = -1;
+  // Touch gesture state. TouchEvent.touches is the source of truth on iOS.
   private leftTouchDown = false;
-  private twoFingerArmed = false;
-  private rightClickPos = { x: 0.5, y: 0.5 };
+  private rightTouchActive = false;
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private longPressStart = { x: 0.5, y: 0.5 };
+  private suppressMouseUntil = 0;
 
   private readonly onKeyDown: (e: KeyboardEvent) => void;
   private readonly onKeyUp: (e: KeyboardEvent) => void;
@@ -523,6 +522,7 @@ export class DosEmulator {
     if (kind === "down") this.resumeAudioIfNeeded();
     if (!this.ci) return;
     if (e.pointerType === "touch" && "TouchEvent" in window) return;
+    if (Date.now() < this.suppressMouseUntil) return;
     e.preventDefault();
     if (kind === "down") {
       try { this.canvas.setPointerCapture(e.pointerId); } catch { /* pointer may already be inactive */ }
@@ -535,11 +535,6 @@ export class DosEmulator {
     const ry = (e.clientY - rect.top) / rect.height;
     const cx = Math.max(0, Math.min(1, rx));
     const cy = Math.max(0, Math.min(1, ry));
-
-    if (e.pointerType === "touch") {
-      this.handleTouchPoint(e.pointerId, kind, cx, cy);
-      return;
-    }
 
     // Mouse / pen — unchanged button-index behavior.
     this.ci.sendMouseMotion(cx, cy);
@@ -555,10 +550,9 @@ export class DosEmulator {
   }
 
   // Touch gesture model:
-  //  · 1 finger  → move pointer + hold LEFT (so taps click and drags work).
-  //  · 2 fingers → cancel the held LEFT and arm a RIGHT click; the right click
-  //    (down+up at the first finger's position) fires once when a finger lifts.
-  //  · 3+ fingers→ ignored (no extra buttons).
+  //  · 1 finger: left button down, drag with motion, release on lift.
+  //  · 2 fingers: cancel any left hold and emit a right click (button 2).
+  //  · Long press: fallback right click for iOS users who expect it.
   private coordsFromClient(clientX: number, clientY: number): { x: number; y: number } | null {
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
@@ -574,86 +568,75 @@ export class DosEmulator {
     if (kind === "down") this.resumeAudioIfNeeded();
     if (!this.ci) return;
     e.preventDefault();
-    for (const touch of Array.from(e.changedTouches)) {
-      const p = this.coordsFromClient(touch.clientX, touch.clientY);
-      if (!p) continue;
-      this.handleTouchPoint(touch.identifier, kind, p.x, p.y);
-    }
-  }
+    this.suppressMouseUntil = Date.now() + 700;
 
-  private handleTouchPoint(id: number, kind: "down" | "move" | "up", cx: number, cy: number): void {
-    const ci = this.ci;
-    if (!ci) return;
-
-    if (kind === "down") {
-      this.activeTouches.set(id, { x: cx, y: cy });
-      const count = this.activeTouches.size;
-      if (count === 1) {
-        this.firstTouchId = id;
-        this.rightClickPos = { x: cx, y: cy };
-        ci.sendMouseMotion(cx, cy);
-        ci.sendMouseButton(0, true);
-        ci.sendMouseSync();
-        this.leftTouchDown = true;
-      } else if (count === 2) {
-        // Second finger → this is a right-click gesture. Undo the left press.
-        if (this.leftTouchDown) {
-          ci.sendMouseButton(0, false);
-          ci.sendMouseSync();
-          this.leftTouchDown = false;
-        }
-        // Anchor the right click at the first finger's last known position.
-        // Copy (not alias) the map entry — move events replace it with a fresh
-        // object, but a future mutate-in-place change must not corrupt this.
-        const first = this.activeTouches.get(this.firstTouchId);
-        if (first) this.rightClickPos = { ...first };
-        this.emitRightClick();
-      }
+    const touches = Array.from(e.touches);
+    if (kind === "down" && touches.length === 2) {
+      this.cancelLongPress();
+      const p = this.coordsFromClient(touches[0].clientX, touches[0].clientY);
+      if (!p) return;
+      if (this.leftTouchDown) this.releaseLeftTouch();
+      this.rightTouchActive = true;
+      this.emitRightClick(p.x, p.y);
       return;
     }
 
     if (kind === "move") {
-      if (this.activeTouches.has(id)) {
-        this.activeTouches.set(id, { x: cx, y: cy });
+      if (touches.length !== 1 || this.rightTouchActive || !this.leftTouchDown) return;
+      const p = this.coordsFromClient(touches[0].clientX, touches[0].clientY);
+      if (!p) return;
+      if (Math.abs(p.x - this.longPressStart.x) + Math.abs(p.y - this.longPressStart.y) > 0.02) {
+        this.cancelLongPress();
       }
-      // Single-finger drag only (don't move the cursor mid two-finger gesture).
-      if (!this.twoFingerArmed && this.leftTouchDown && id === this.firstTouchId) {
-        ci.sendMouseMotion(cx, cy);
-        ci.sendMouseSync();
+      this.ci.sendMouseMotion(p.x, p.y);
+      this.ci.sendMouseSync();
+      return;
+    }
+
+    if (kind === "up") {
+      if (touches.length === 0) {
+        this.cancelLongPress();
+        if (this.leftTouchDown) this.releaseLeftTouch();
+        this.rightTouchActive = false;
       }
       return;
     }
 
-    // kind === "up" (also reused for pointercancel via the listener wiring)
-    this.activeTouches.delete(id);
-
-    if (this.twoFingerArmed) {
-      // Fire one right click, then disarm. Remaining finger lifts are swallowed.
-      this.twoFingerArmed = false;
-      const p = this.rightClickPos;
-      ci.sendMouseMotion(p.x, p.y);
-      ci.sendMouseButton(2, true);
-      ci.sendMouseSync();
-      ci.sendMouseButton(2, false);
-      ci.sendMouseSync();
-    } else if (this.leftTouchDown && this.activeTouches.size === 0) {
-      ci.sendMouseButton(0, false);
-      ci.sendMouseSync();
-      this.leftTouchDown = false;
-    }
-
-    if (this.activeTouches.size === 0) {
-      this.firstTouchId = -1;
-      this.twoFingerArmed = false;
-      this.leftTouchDown = false;
+    if (kind === "down" && touches.length === 1 && !this.leftTouchDown && !this.rightTouchActive) {
+      const p = this.coordsFromClient(touches[0].clientX, touches[0].clientY);
+      if (!p) return;
+      this.longPressStart = p;
+      this.ci.sendMouseMotion(p.x, p.y);
+      this.ci.sendMouseButton(0, true);
+      this.ci.sendMouseSync();
+      this.leftTouchDown = true;
+      this.longPressTimer = setTimeout(() => {
+        if (!this.leftTouchDown || this.rightTouchActive) return;
+        this.releaseLeftTouch();
+        this.rightTouchActive = true;
+        this.emitRightClick(p.x, p.y);
+      }, 550);
     }
   }
 
-  private emitRightClick(): void {
+  private cancelLongPress(): void {
+    if (!this.longPressTimer) return;
+    clearTimeout(this.longPressTimer);
+    this.longPressTimer = null;
+  }
+
+  private releaseLeftTouch(): void {
+    const ci = this.ci;
+    if (!ci || !this.leftTouchDown) return;
+    ci.sendMouseButton(0, false);
+    ci.sendMouseSync();
+    this.leftTouchDown = false;
+  }
+
+  private emitRightClick(x: number, y: number): void {
     const ci = this.ci;
     if (!ci) return;
-    const p = this.rightClickPos;
-    ci.sendMouseMotion(p.x, p.y);
+    ci.sendMouseMotion(x, y);
     ci.sendMouseButton(2, true);
     ci.sendMouseSync();
     ci.sendMouseButton(2, false);
@@ -683,6 +666,7 @@ export class DosEmulator {
       cancelAnimationFrame(this.rafId);
       this.rafId = 0;
     }
+    this.cancelLongPress();
     this.pendingBuf = null;
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
