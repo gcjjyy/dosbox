@@ -543,16 +543,17 @@ export class DosEmulator {
       this.ci.sendMouseSync();
       return;
     }
-    // js-dos forwards MouseEvent.button values to the backend unchanged:
-    // 0 = left, 1 = middle, 2 = right.
-    const button = e.button;
+    // Browser MouseEvent.button -> DOSBox button index:
+    // browser 0 = left, 1 = middle, 2 = right
+    // DOSBox  0 = left, 1 = right,  2 = middle
+    const button = e.button === 2 ? 1 : e.button === 1 ? 2 : 0;
     this.ci.sendMouseButton(button, kind === "down");
     this.ci.sendMouseSync();
   }
 
   // Touch gesture model:
   //  · 1 finger: left button down, drag with motion, release on lift.
-  //  · 2 fingers: cancel any left hold and emit a right click (button 2).
+  //  · 2 fingers: cancel any left hold and emit a right click (button 1).
   //  · Long press: fallback right click for iOS users who expect it.
   private coordsFromClient(clientX: number, clientY: number): { x: number; y: number } | null {
     const rect = this.canvas.getBoundingClientRect();
@@ -658,9 +659,9 @@ export class DosEmulator {
     const ci = this.ci;
     if (!ci) return;
     ci.sendMouseMotion(x, y);
-    ci.sendMouseButton(2, true);
+    ci.sendMouseButton(1, true);
     ci.sendMouseSync();
-    ci.sendMouseButton(2, false);
+    ci.sendMouseButton(1, false);
     ci.sendMouseSync();
   }
 
