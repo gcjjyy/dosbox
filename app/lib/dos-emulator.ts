@@ -184,6 +184,7 @@ export class DosEmulator {
   private suppressMouseUntil = 0;
   private touchStartedOnCanvas = false;
   private touchMoved = false;
+  private clickReleaseTimers = new Set<ReturnType<typeof setTimeout>>();
   private debugTouch = false;
   private debugTouchEl: HTMLDivElement | null = null;
 
@@ -710,23 +711,26 @@ export class DosEmulator {
   }
 
   private emitRightClick(x: number, y: number): void {
-    const ci = this.ci;
-    if (!ci) return;
-    ci.sendMouseMotion(x, y);
-    ci.sendMouseButton(1, true);
-    ci.sendMouseSync();
-    ci.sendMouseButton(1, false);
-    ci.sendMouseSync();
+    this.emitClick(1, x, y);
   }
 
   private emitLeftClick(x: number, y: number): void {
+    this.emitClick(0, x, y);
+  }
+
+  private emitClick(button: number, x: number, y: number): void {
     const ci = this.ci;
     if (!ci) return;
     ci.sendMouseMotion(x, y);
-    ci.sendMouseButton(0, true);
+    ci.sendMouseButton(button, true);
     ci.sendMouseSync();
-    ci.sendMouseButton(0, false);
-    ci.sendMouseSync();
+    const timer = setTimeout(() => {
+      this.clickReleaseTimers.delete(timer);
+      if (!this.ci) return;
+      this.ci.sendMouseButton(button, false);
+      this.ci.sendMouseSync();
+    }, 60);
+    this.clickReleaseTimers.add(timer);
   }
 
   // ── Public API (used by VirtualKeyboard) ─────────────────────────
@@ -753,6 +757,8 @@ export class DosEmulator {
       this.rafId = 0;
     }
     this.cancelLongPress();
+    for (const timer of this.clickReleaseTimers) clearTimeout(timer);
+    this.clickReleaseTimers.clear();
     if (this.debugTouchEl) {
       this.debugTouchEl.remove();
       this.debugTouchEl = null;
