@@ -522,8 +522,8 @@ export class DosEmulator {
   private handlePointer(e: PointerEvent, kind: "down" | "move" | "up"): void {
     if (kind === "down") this.resumeAudioIfNeeded();
     if (!this.ci) return;
-    e.preventDefault();
     if (e.pointerType === "touch" && "TouchEvent" in window) return;
+    e.preventDefault();
     if (kind === "down") {
       try { this.canvas.setPointerCapture(e.pointerId); } catch { /* pointer may already be inactive */ }
     } else if (kind === "up") {
@@ -602,12 +602,12 @@ export class DosEmulator {
           ci.sendMouseSync();
           this.leftTouchDown = false;
         }
-        this.twoFingerArmed = true;
         // Anchor the right click at the first finger's last known position.
         // Copy (not alias) the map entry — move events replace it with a fresh
         // object, but a future mutate-in-place change must not corrupt this.
         const first = this.activeTouches.get(this.firstTouchId);
         if (first) this.rightClickPos = { ...first };
+        this.emitRightClick();
       }
       return;
     }
@@ -647,6 +647,17 @@ export class DosEmulator {
       this.twoFingerArmed = false;
       this.leftTouchDown = false;
     }
+  }
+
+  private emitRightClick(): void {
+    const ci = this.ci;
+    if (!ci) return;
+    const p = this.rightClickPos;
+    ci.sendMouseMotion(p.x, p.y);
+    ci.sendMouseButton(1, true);
+    ci.sendMouseSync();
+    ci.sendMouseButton(1, false);
+    ci.sendMouseSync();
   }
 
   // ── Public API (used by VirtualKeyboard) ─────────────────────────

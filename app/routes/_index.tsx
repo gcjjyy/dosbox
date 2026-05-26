@@ -213,7 +213,10 @@ export default function Index({ loaderData }: Route.ComponentProps) {
           hygiene, not the root cause here.) */}
       <div
         inert={!vkbVisible}
-        style={{ opacity: vkbVisible ? 1 : 0.01 }}
+        style={{
+          opacity: vkbVisible ? 1 : 0.01,
+          pointerEvents: vkbVisible ? "auto" : "none",
+        }}
       >
         <VirtualKeyboard
           onKeyDown={onVkbKeyDown}
