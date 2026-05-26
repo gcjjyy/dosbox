@@ -547,9 +547,9 @@ export class DosEmulator {
       this.ci.sendMouseSync();
       return;
     }
-    // PointerEvent.button → DOSBox button index:
-    //   browser 0 (left) → 0, browser 2 (right) → 1, browser 1 (middle) → 2
-    const button = e.button === 2 ? 1 : e.button === 1 ? 2 : 0;
+    // js-dos forwards MouseEvent.button values to the backend unchanged:
+    // 0 = left, 1 = middle, 2 = right.
+    const button = e.button;
     this.ci.sendMouseButton(button, kind === "down");
     this.ci.sendMouseSync();
   }
@@ -632,9 +632,9 @@ export class DosEmulator {
       this.twoFingerArmed = false;
       const p = this.rightClickPos;
       ci.sendMouseMotion(p.x, p.y);
-      ci.sendMouseButton(1, true);
+      ci.sendMouseButton(2, true);
       ci.sendMouseSync();
-      ci.sendMouseButton(1, false);
+      ci.sendMouseButton(2, false);
       ci.sendMouseSync();
     } else if (this.leftTouchDown && this.activeTouches.size === 0) {
       ci.sendMouseButton(0, false);
@@ -654,9 +654,9 @@ export class DosEmulator {
     if (!ci) return;
     const p = this.rightClickPos;
     ci.sendMouseMotion(p.x, p.y);
-    ci.sendMouseButton(1, true);
+    ci.sendMouseButton(2, true);
     ci.sendMouseSync();
-    ci.sendMouseButton(1, false);
+    ci.sendMouseButton(2, false);
     ci.sendMouseSync();
   }
 
