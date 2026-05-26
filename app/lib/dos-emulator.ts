@@ -183,6 +183,7 @@ export class DosEmulator {
   private longPressStart = { x: 0.5, y: 0.5 };
   private suppressMouseUntil = 0;
   private touchStartedOnCanvas = false;
+  private touchMoved = false;
   private debugTouch = false;
   private debugTouchEl: HTMLDivElement | null = null;
 
@@ -587,7 +588,7 @@ export class DosEmulator {
     const touches = Array.from(e.touches);
     this.debugTouchLog(`${kind}: touches=${touches.length} changed=${e.changedTouches.length}`);
 
-    if (kind === "down" && touches.length === 1) {
+    if (kind === "down" && touches.length >= 1 && !this.touchStartedOnCanvas) {
       this.touchStartedOnCanvas = this.isInsideCanvas(touches[0].clientX, touches[0].clientY);
       this.debugTouchLog(`start-on-canvas=${this.touchStartedOnCanvas}`);
     }
@@ -603,18 +604,28 @@ export class DosEmulator {
       if (this.leftTouchDown) this.releaseLeftTouch();
       if (this.rightTouchActive) return;
       this.rightTouchActive = true;
+      this.touchMoved = true;
       this.debugTouchLog(`right-click x=${p.x.toFixed(3)} y=${p.y.toFixed(3)} button=1`);
       this.emitRightClick(p.x, p.y);
       return;
     }
 
     if (kind === "move") {
-      if (touches.length !== 1 || this.rightTouchActive || !this.leftTouchDown) return;
+      if (touches.length !== 1 || this.rightTouchActive) return;
       const p = this.coordsFromClient(touches[0].clientX, touches[0].clientY);
       if (!p) return;
-      if (Math.abs(p.x - this.longPressStart.x) + Math.abs(p.y - this.longPressStart.y) > 0.02) {
+      const dist = Math.abs(p.x - this.longPressStart.x) + Math.abs(p.y - this.longPressStart.y);
+      if (dist > 0.02) {
         this.cancelLongPress();
+        this.touchMoved = true;
+        if (!this.leftTouchDown) {
+          this.ci.sendMouseMotion(this.longPressStart.x, this.longPressStart.y);
+          this.ci.sendMouseButton(0, true);
+          this.ci.sendMouseSync();
+          this.leftTouchDown = true;
+        }
       }
+      if (!this.leftTouchDown) return;
       this.ci.sendMouseMotion(p.x, p.y);
       this.ci.sendMouseSync();
       return;
@@ -624,8 +635,16 @@ export class DosEmulator {
       if (touches.length === 0) {
         this.cancelLongPress();
         if (this.leftTouchDown) this.releaseLeftTouch();
+        else if (!this.rightTouchActive && !this.touchMoved) {
+          const touch = e.changedTouches[0];
+          if (touch) {
+            const p = this.coordsFromClient(touch.clientX, touch.clientY);
+            if (p) this.emitLeftClick(p.x, p.y);
+          }
+        }
         this.rightTouchActive = false;
         this.touchStartedOnCanvas = false;
+        this.touchMoved = false;
       }
       return;
     }
@@ -635,13 +654,12 @@ export class DosEmulator {
       if (!p) return;
       this.longPressStart = p;
       this.ci.sendMouseMotion(p.x, p.y);
-      this.ci.sendMouseButton(0, true);
       this.ci.sendMouseSync();
-      this.leftTouchDown = true;
+      this.touchMoved = false;
       this.longPressTimer = setTimeout(() => {
-        if (!this.leftTouchDown || this.rightTouchActive) return;
-        this.releaseLeftTouch();
+        if (this.rightTouchActive || this.leftTouchDown || this.touchMoved) return;
         this.rightTouchActive = true;
+        this.touchMoved = true;
         this.debugTouchLog(`long-press right-click x=${p.x.toFixed(3)} y=${p.y.toFixed(3)} button=1`);
         this.emitRightClick(p.x, p.y);
       }, 550);
@@ -698,6 +716,16 @@ export class DosEmulator {
     ci.sendMouseButton(1, true);
     ci.sendMouseSync();
     ci.sendMouseButton(1, false);
+    ci.sendMouseSync();
+  }
+
+  private emitLeftClick(x: number, y: number): void {
+    const ci = this.ci;
+    if (!ci) return;
+    ci.sendMouseMotion(x, y);
+    ci.sendMouseButton(0, true);
+    ci.sendMouseSync();
+    ci.sendMouseButton(0, false);
     ci.sendMouseSync();
   }
 
