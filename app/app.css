@@ -280,7 +280,12 @@ html { color-scheme: dark; }
 .dos-stage--valign-top { align-items: start; }
 .dos-stage--valign-middle { align-items: center; }
 .dos-stage--valign-bottom { align-items: end; }
-.dos-canvas { image-rendering: auto; display: block; }
+.dos-canvas {
+  image-rendering: auto;
+  display: block;
+  touch-action: none;
+  user-select: none;
+}
 .dos-canvas--fill {
   width: 100%;
   height: 100%;

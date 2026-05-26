@@ -161,6 +161,10 @@ export async function getBundleEtag(): Promise<string> {
   return ensureBundle();
 }
 
+export function bundleVersionFromEtag(etag: string): string {
+  return etag.trim().replace(/^W\//, "").replace(/^"|"$/g, "");
+}
+
 export interface BundleStream {
   body: ReadableStream<Uint8Array>;
   etag: string;

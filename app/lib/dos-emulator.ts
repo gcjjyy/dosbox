@@ -189,6 +189,7 @@ export class DosEmulator {
   private readonly onPointerDown: (e: PointerEvent) => void;
   private readonly onPointerMove: (e: PointerEvent) => void;
   private readonly onPointerUp: (e: PointerEvent) => void;
+  private readonly onContextMenu: (e: MouseEvent) => void;
   private gestureUnlock: ((e: Event) => void) | null = null;
 
   constructor(opts: DosEmulatorOpts) {
@@ -221,6 +222,7 @@ export class DosEmulator {
     this.onPointerDown = (e) => this.handlePointer(e, "down");
     this.onPointerMove = (e) => this.handlePointer(e, "move");
     this.onPointerUp = (e) => this.handlePointer(e, "up");
+    this.onContextMenu = (e) => e.preventDefault();
 
     void this.boot().catch((err) => opts.onError?.(err));
   }
@@ -321,7 +323,7 @@ export class DosEmulator {
     this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
     // Suppress browser right-click menu on the DOS canvas
-    this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.canvas.addEventListener("contextmenu", this.onContextMenu);
 
     this.opts.onReady?.(ci);
   }
@@ -510,6 +512,12 @@ export class DosEmulator {
   private handlePointer(e: PointerEvent, kind: "down" | "move" | "up"): void {
     if (kind === "down") this.resumeAudioIfNeeded();
     if (!this.ci) return;
+    e.preventDefault();
+    if (kind === "down") {
+      try { this.canvas.setPointerCapture(e.pointerId); } catch { /* pointer may already be inactive */ }
+    } else if (kind === "up") {
+      try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* pointer may already be released */ }
+    }
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     const rx = (e.clientX - rect.left) / rect.width;
@@ -638,6 +646,7 @@ export class DosEmulator {
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
+    this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     if (this.gestureUnlock) {
       window.removeEventListener("pointerdown", this.gestureUnlock, true);
       window.removeEventListener("keydown", this.gestureUnlock, true);

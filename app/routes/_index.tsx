@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Route } from "./+types/_index";
 import { getSession } from "../lib/auth.server";
+import { bundleVersionFromEtag, getBundleEtag } from "../lib/bundle";
 import { DosFrame, type CommandInterface, type DosEmulator } from "../components/DosFrame";
 import { Toolbar } from "../components/Toolbar";
 import { LoginModal } from "../components/LoginModal";
@@ -20,7 +21,11 @@ export function meta(_: Route.MetaArgs) {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const session = await getSession(request);
-  return { isAdmin: Boolean(session.get("isAdmin")) };
+  const bundleVersion = bundleVersionFromEtag(await getBundleEtag());
+  return {
+    isAdmin: Boolean(session.get("isAdmin")),
+    bundleUrl: `/dos.jsdos?v=${encodeURIComponent(bundleVersion)}`,
+  };
 }
 
 export default function Index({ loaderData }: Route.ComponentProps) {
@@ -176,7 +181,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
       <main className="relative">
         {mounted && (
           <DosFrame
-            bundleUrl="/dos.jsdos"
+            bundleUrl={loaderData.bundleUrl}
             onReady={onReady}
             onEmulator={onEmulator}
             width={resolution.width}

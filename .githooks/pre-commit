@@ -24,8 +24,19 @@ const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
 const [a, b, c] = p.version.split(".").map(Number);
 p.version = `${a}.${b}.${c + 1}`;
 fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+if (fs.existsSync("package-lock.json")) {
+  const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+  lock.version = p.version;
+  if (lock.packages && lock.packages[""]) {
+    lock.packages[""].version = p.version;
+  }
+  fs.writeFileSync("package-lock.json", JSON.stringify(lock, null, 2) + "\n");
+}
 console.log(p.version);
 ')
 
 git add package.json
+if [ -f package-lock.json ]; then
+  git add package-lock.json
+fi
 echo "[pre-commit] version → $new"

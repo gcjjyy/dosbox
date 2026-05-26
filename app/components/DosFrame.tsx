@@ -35,7 +35,7 @@ async function streamBundle(
   signal: AbortSignal,
   onDownload: (fraction: number) => void,
 ): Promise<Uint8Array> {
-  const r = await fetch(url, { cache: "no-cache", signal });
+  const r = await fetch(url, { signal });
   if (!r.ok) throw new Error(`bundle fetch failed: ${r.status}`);
   const totalHeader = r.headers.get("Content-Length");
   const total = totalHeader ? Number(totalHeader) : 0;
