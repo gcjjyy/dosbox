@@ -182,6 +182,7 @@ export class DosEmulator {
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressStart = { x: 0.5, y: 0.5 };
   private suppressMouseUntil = 0;
+  private touchStartedOnCanvas = false;
 
   private readonly onKeyDown: (e: KeyboardEvent) => void;
   private readonly onKeyUp: (e: KeyboardEvent) => void;
@@ -327,10 +328,10 @@ export class DosEmulator {
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
-    this.canvas.addEventListener("touchstart", this.onTouchStart, { passive: false });
-    this.canvas.addEventListener("touchmove", this.onTouchMove, { passive: false });
-    this.canvas.addEventListener("touchend", this.onTouchEnd, { passive: false });
-    this.canvas.addEventListener("touchcancel", this.onTouchEnd, { passive: false });
+    window.addEventListener("touchstart", this.onTouchStart, { passive: false, capture: true });
+    window.addEventListener("touchmove", this.onTouchMove, { passive: false, capture: true });
+    window.addEventListener("touchend", this.onTouchEnd, { passive: false, capture: true });
+    window.addEventListener("touchcancel", this.onTouchEnd, { passive: false, capture: true });
     // Suppress browser right-click menu on the DOS canvas
     this.canvas.addEventListener("contextmenu", this.onContextMenu);
 
@@ -564,18 +565,37 @@ export class DosEmulator {
     };
   }
 
+  private isInsideCanvas(clientX: number, clientY: number): boolean {
+    const rect = this.canvas.getBoundingClientRect();
+    return (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
+  }
+
   private handleTouchEvent(e: TouchEvent, kind: "down" | "move" | "up"): void {
     if (kind === "down") this.resumeAudioIfNeeded();
     if (!this.ci) return;
+    const touches = Array.from(e.touches);
+
+    if (kind === "down" && touches.length === 1) {
+      this.touchStartedOnCanvas = this.isInsideCanvas(touches[0].clientX, touches[0].clientY);
+    }
+    if (!this.touchStartedOnCanvas) return;
+
     e.preventDefault();
     this.suppressMouseUntil = Date.now() + 700;
 
-    const touches = Array.from(e.touches);
     if (kind === "down" && touches.length === 2) {
       this.cancelLongPress();
       const p = this.coordsFromClient(touches[0].clientX, touches[0].clientY);
       if (!p) return;
       if (this.leftTouchDown) this.releaseLeftTouch();
+      if (this.rightTouchActive) return;
       this.rightTouchActive = true;
       this.emitRightClick(p.x, p.y);
       return;
@@ -598,6 +618,7 @@ export class DosEmulator {
         this.cancelLongPress();
         if (this.leftTouchDown) this.releaseLeftTouch();
         this.rightTouchActive = false;
+        this.touchStartedOnCanvas = false;
       }
       return;
     }
@@ -674,10 +695,10 @@ export class DosEmulator {
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
-    this.canvas.removeEventListener("touchstart", this.onTouchStart);
-    this.canvas.removeEventListener("touchmove", this.onTouchMove);
-    this.canvas.removeEventListener("touchend", this.onTouchEnd);
-    this.canvas.removeEventListener("touchcancel", this.onTouchEnd);
+    window.removeEventListener("touchstart", this.onTouchStart, true);
+    window.removeEventListener("touchmove", this.onTouchMove, true);
+    window.removeEventListener("touchend", this.onTouchEnd, true);
+    window.removeEventListener("touchcancel", this.onTouchEnd, true);
     this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     if (this.gestureUnlock) {
       window.removeEventListener("pointerdown", this.gestureUnlock, true);
