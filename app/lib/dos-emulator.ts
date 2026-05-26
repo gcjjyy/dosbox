@@ -183,6 +183,8 @@ export class DosEmulator {
   private longPressStart = { x: 0.5, y: 0.5 };
   private suppressMouseUntil = 0;
   private touchStartedOnCanvas = false;
+  private debugTouch = false;
+  private debugTouchEl: HTMLDivElement | null = null;
 
   private readonly onKeyDown: (e: KeyboardEvent) => void;
   private readonly onKeyUp: (e: KeyboardEvent) => void;
@@ -219,6 +221,7 @@ export class DosEmulator {
     // canvas framebuffer, matching the LINEAR sampling inside GL.
     this.canvas.style.imageRendering = "auto";
     this.setupGL();
+    this.setupTouchDebug();
 
     this.onKeyDown = (e) => this.handleKey(e, true);
     this.onKeyUp = (e) => this.handleKey(e, false);
@@ -582,9 +585,11 @@ export class DosEmulator {
     if (kind === "down") this.resumeAudioIfNeeded();
     if (!this.ci) return;
     const touches = Array.from(e.touches);
+    this.debugTouchLog(`${kind}: touches=${touches.length} changed=${e.changedTouches.length}`);
 
     if (kind === "down" && touches.length === 1) {
       this.touchStartedOnCanvas = this.isInsideCanvas(touches[0].clientX, touches[0].clientY);
+      this.debugTouchLog(`start-on-canvas=${this.touchStartedOnCanvas}`);
     }
     if (!this.touchStartedOnCanvas) return;
 
@@ -598,6 +603,7 @@ export class DosEmulator {
       if (this.leftTouchDown) this.releaseLeftTouch();
       if (this.rightTouchActive) return;
       this.rightTouchActive = true;
+      this.debugTouchLog(`right-click x=${p.x.toFixed(3)} y=${p.y.toFixed(3)} button=1`);
       this.emitRightClick(p.x, p.y);
       return;
     }
@@ -636,9 +642,39 @@ export class DosEmulator {
         if (!this.leftTouchDown || this.rightTouchActive) return;
         this.releaseLeftTouch();
         this.rightTouchActive = true;
+        this.debugTouchLog(`long-press right-click x=${p.x.toFixed(3)} y=${p.y.toFixed(3)} button=1`);
         this.emitRightClick(p.x, p.y);
       }, 550);
     }
+  }
+
+  private setupTouchDebug(): void {
+    this.debugTouch = new URLSearchParams(window.location.search).has("debugTouch");
+    if (!this.debugTouch) return;
+    const el = document.createElement("div");
+    el.style.cssText = [
+      "position:fixed",
+      "left:8px",
+      "bottom:8px",
+      "z-index:10000",
+      "max-width:calc(100vw - 16px)",
+      "padding:6px 8px",
+      "border:1px solid rgba(255,255,255,.25)",
+      "background:rgba(0,0,0,.78)",
+      "color:#fff",
+      "font:12px/1.35 monospace",
+      "white-space:pre-wrap",
+      "pointer-events:none",
+    ].join(";");
+    el.textContent = "touch debug ready";
+    document.body.appendChild(el);
+    this.debugTouchEl = el;
+  }
+
+  private debugTouchLog(message: string): void {
+    if (!this.debugTouch) return;
+    console.log("[touch]", message);
+    if (this.debugTouchEl) this.debugTouchEl.textContent = message;
   }
 
   private cancelLongPress(): void {
@@ -689,6 +725,10 @@ export class DosEmulator {
       this.rafId = 0;
     }
     this.cancelLongPress();
+    if (this.debugTouchEl) {
+      this.debugTouchEl.remove();
+      this.debugTouchEl = null;
+    }
     this.pendingBuf = null;
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
