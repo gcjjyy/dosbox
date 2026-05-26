@@ -189,6 +189,9 @@ export class DosEmulator {
   private readonly onPointerDown: (e: PointerEvent) => void;
   private readonly onPointerMove: (e: PointerEvent) => void;
   private readonly onPointerUp: (e: PointerEvent) => void;
+  private readonly onTouchStart: (e: TouchEvent) => void;
+  private readonly onTouchMove: (e: TouchEvent) => void;
+  private readonly onTouchEnd: (e: TouchEvent) => void;
   private readonly onContextMenu: (e: MouseEvent) => void;
   private gestureUnlock: ((e: Event) => void) | null = null;
 
@@ -222,6 +225,9 @@ export class DosEmulator {
     this.onPointerDown = (e) => this.handlePointer(e, "down");
     this.onPointerMove = (e) => this.handlePointer(e, "move");
     this.onPointerUp = (e) => this.handlePointer(e, "up");
+    this.onTouchStart = (e) => this.handleTouchEvent(e, "down");
+    this.onTouchMove = (e) => this.handleTouchEvent(e, "move");
+    this.onTouchEnd = (e) => this.handleTouchEvent(e, "up");
     this.onContextMenu = (e) => e.preventDefault();
 
     void this.boot().catch((err) => opts.onError?.(err));
@@ -322,6 +328,10 @@ export class DosEmulator {
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
     this.canvas.addEventListener("pointercancel", this.onPointerUp);
+    this.canvas.addEventListener("touchstart", this.onTouchStart, { passive: false });
+    this.canvas.addEventListener("touchmove", this.onTouchMove, { passive: false });
+    this.canvas.addEventListener("touchend", this.onTouchEnd, { passive: false });
+    this.canvas.addEventListener("touchcancel", this.onTouchEnd, { passive: false });
     // Suppress browser right-click menu on the DOS canvas
     this.canvas.addEventListener("contextmenu", this.onContextMenu);
 
@@ -513,6 +523,7 @@ export class DosEmulator {
     if (kind === "down") this.resumeAudioIfNeeded();
     if (!this.ci) return;
     e.preventDefault();
+    if (e.pointerType === "touch" && "TouchEvent" in window) return;
     if (kind === "down") {
       try { this.canvas.setPointerCapture(e.pointerId); } catch { /* pointer may already be inactive */ }
     } else if (kind === "up") {
@@ -526,7 +537,7 @@ export class DosEmulator {
     const cy = Math.max(0, Math.min(1, ry));
 
     if (e.pointerType === "touch") {
-      this.handleTouch(e, kind, cx, cy);
+      this.handleTouchPoint(e.pointerId, kind, cx, cy);
       return;
     }
 
@@ -548,15 +559,37 @@ export class DosEmulator {
   //  · 2 fingers → cancel the held LEFT and arm a RIGHT click; the right click
   //    (down+up at the first finger's position) fires once when a finger lifts.
   //  · 3+ fingers→ ignored (no extra buttons).
-  private handleTouch(e: PointerEvent, kind: "down" | "move" | "up", cx: number, cy: number): void {
+  private coordsFromClient(clientX: number, clientY: number): { x: number; y: number } | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const rx = (clientX - rect.left) / rect.width;
+    const ry = (clientY - rect.top) / rect.height;
+    return {
+      x: Math.max(0, Math.min(1, rx)),
+      y: Math.max(0, Math.min(1, ry)),
+    };
+  }
+
+  private handleTouchEvent(e: TouchEvent, kind: "down" | "move" | "up"): void {
+    if (kind === "down") this.resumeAudioIfNeeded();
+    if (!this.ci) return;
+    e.preventDefault();
+    for (const touch of Array.from(e.changedTouches)) {
+      const p = this.coordsFromClient(touch.clientX, touch.clientY);
+      if (!p) continue;
+      this.handleTouchPoint(touch.identifier, kind, p.x, p.y);
+    }
+  }
+
+  private handleTouchPoint(id: number, kind: "down" | "move" | "up", cx: number, cy: number): void {
     const ci = this.ci;
     if (!ci) return;
 
     if (kind === "down") {
-      this.activeTouches.set(e.pointerId, { x: cx, y: cy });
+      this.activeTouches.set(id, { x: cx, y: cy });
       const count = this.activeTouches.size;
       if (count === 1) {
-        this.firstTouchId = e.pointerId;
+        this.firstTouchId = id;
         this.rightClickPos = { x: cx, y: cy };
         ci.sendMouseMotion(cx, cy);
         ci.sendMouseButton(0, true);
@@ -580,11 +613,11 @@ export class DosEmulator {
     }
 
     if (kind === "move") {
-      if (this.activeTouches.has(e.pointerId)) {
-        this.activeTouches.set(e.pointerId, { x: cx, y: cy });
+      if (this.activeTouches.has(id)) {
+        this.activeTouches.set(id, { x: cx, y: cy });
       }
       // Single-finger drag only (don't move the cursor mid two-finger gesture).
-      if (!this.twoFingerArmed && this.leftTouchDown && e.pointerId === this.firstTouchId) {
+      if (!this.twoFingerArmed && this.leftTouchDown && id === this.firstTouchId) {
         ci.sendMouseMotion(cx, cy);
         ci.sendMouseSync();
       }
@@ -592,7 +625,7 @@ export class DosEmulator {
     }
 
     // kind === "up" (also reused for pointercancel via the listener wiring)
-    this.activeTouches.delete(e.pointerId);
+    this.activeTouches.delete(id);
 
     if (this.twoFingerArmed) {
       // Fire one right click, then disarm. Remaining finger lifts are swallowed.
@@ -646,6 +679,10 @@ export class DosEmulator {
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
+    this.canvas.removeEventListener("touchstart", this.onTouchStart);
+    this.canvas.removeEventListener("touchmove", this.onTouchMove);
+    this.canvas.removeEventListener("touchend", this.onTouchEnd);
+    this.canvas.removeEventListener("touchcancel", this.onTouchEnd);
     this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     if (this.gestureUnlock) {
       window.removeEventListener("pointerdown", this.gestureUnlock, true);
