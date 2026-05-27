@@ -46,6 +46,7 @@ interface DosboxModule {
   HEAPF32: Float32Array;
   SDL?: {
     audioContext?: AudioContext;
+    openAudioContext?: () => void;
   };
   ccall: (name: string, returnType: string | null, argTypes: string[], args: unknown[]) => unknown;
   callMain: (args?: string[]) => void;
@@ -444,7 +445,9 @@ export class DosEmulator {
   async unlockAudio(): Promise<boolean> {
     if (this.exiting) return false;
     this.focusCanvas();
-    const ctx = this.module?.SDL?.audioContext;
+    const sdl = this.module?.SDL;
+    if (!sdl?.audioContext) sdl?.openAudioContext?.();
+    const ctx = sdl?.audioContext;
     if (!ctx || ctx.state === "closed") return false;
     if (ctx.state !== "running") await ctx.resume();
     if (ctx.state === "running") this.removeAudioUnlockListeners();

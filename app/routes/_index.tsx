@@ -80,7 +80,6 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     try {
       const ok = await emu.unlockAudio();
       if (ok) setAudioPromptVisible(false);
-      else setStatus("오디오 준비 중");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err));
     } finally {

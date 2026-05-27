@@ -310,22 +310,21 @@ html { color-scheme: dark; }
 }
 .audio-unlock {
   position: absolute;
-  top: 14px;
-  left: 50%;
+  top: 16px;
+  left: 16px;
   z-index: 55;
-  transform: translateX(-50%);
 }
 .audio-unlock__button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 34px;
-  padding: 0 13px;
+  height: 44px;
+  padding: 0 16px;
   border: 1px solid rgba(91, 141, 239, 0.42);
   border-radius: 6px;
   background: rgba(10, 15, 31, 0.88);
   color: var(--color-navy-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   box-shadow:
     0 10px 28px -12px rgba(0, 0, 0, 0.72),
