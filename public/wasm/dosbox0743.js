@@ -798,6 +798,30 @@ function js_on_audio(samples,n_samples,sample_rate) { if (Module["onAudio"]) Mod
 
       var aPos = gl.getAttribLocation(program, 'aPos');
       var aTex = gl.getAttribLocation(program, 'aTex');
+      var scheduled = false;
+      var dirty = false;
+      var raf = (typeof requestAnimationFrame == 'function')
+        ? requestAnimationFrame.bind(window)
+        : (callback) => setTimeout(callback, 1000 / 60);
+
+      function draw() {
+        scheduled = false;
+        if (!dirty) return;
+        dirty = false;
+        if (targetCanvas.width === 0 || targetCanvas.height === 0) return;
+        gl.viewport(0, 0, targetCanvas.width, targetCanvas.height);
+        gl.useProgram(program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.enableVertexAttribArray(aPos);
+        gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(aTex);
+        gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceCanvas);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
 
       return {
         prepare(width, height) {
@@ -805,19 +829,10 @@ function js_on_audio(samples,n_samples,sample_rate) { if (Module["onAudio"]) Mod
           if (sourceCanvas.height !== height) sourceCanvas.height = height;
         },
         present() {
-          if (targetCanvas.width === 0 || targetCanvas.height === 0) return;
-          gl.viewport(0, 0, targetCanvas.width, targetCanvas.height);
-          gl.useProgram(program);
-          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-          gl.enableVertexAttribArray(aPos);
-          gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
-          gl.enableVertexAttribArray(aTex);
-          gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
-          gl.activeTexture(gl.TEXTURE0);
-          gl.bindTexture(gl.TEXTURE_2D, texture);
-          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceCanvas);
-          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          dirty = true;
+          if (scheduled) return;
+          scheduled = true;
+          raf(draw);
         },
       };
     }
