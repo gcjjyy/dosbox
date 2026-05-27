@@ -191,23 +191,13 @@ export default function Index({ loaderData }: Route.ComponentProps) {
           </div>
         )}
       </main>
-      <div className="chrome-compositor-guard" aria-hidden="true" />
+      <div className="canvas-compositor-guard" aria-hidden="true" />
       {/* Always mount; hidden state uses opacity 0.01 (NOT 0) + inert.
-          Load-bearing for Chrome on M-series Macs driving an external
-          monitor: macOS otherwise promotes the DOS canvas to a direct-
-          scanout overlay plane at certain canvas-to-window size ratios,
-          and the resulting display-mode renegotiation flickers the
-          physical monitor. A composited VKB layer above the canvas
-          disqualifies the canvas from overlay promotion.
-          0.01 (not 0) is critical: Chrome skips painting opacity-0
-          subtrees entirely, so the compositor layer effectively
-          disappears — equivalent to not mounting at all. 1% alpha on a
-          dark element over a dark background is below visual threshold
-          but keeps Chrome painting the layer. `inert` blocks pointer
-          and focus events so stray taps can't reach DOS through the
-          invisible keys. (`preserveDrawingBuffer: true` in dos-emulator
-          addresses WebGL backbuffer clearing — separate WebGL-spec
-          hygiene, not the root cause here.) */}
+          Kept mounted even when visually hidden so the page remains a normal
+          composited document instead of allowing the DOS canvas to become a
+          single-plane presentation surface. 0.01 opacity is intentional:
+          opacity: 0 can be skipped by the compositor entirely. `inert` blocks
+          pointer and focus events while hidden. */}
       <div
         inert={!vkbVisible}
         style={{
