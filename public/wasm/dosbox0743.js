@@ -2820,6 +2820,7 @@ function js_on_audio(samples,n_samples,sample_rate) { if (Module["onAudio"]) Mod
         return null;
       },
   };
+  Module['SDL'] = SDL;
   var _SDL_CreateMutex = () => 0;
 
   var _SDL_CreateRGBSurface = (flags, width, height, depth, rmask, gmask, bmask, amask) => SDL.makeSurface(width, height, flags, false, 'CreateRGBSurface', rmask, gmask, bmask, amask);

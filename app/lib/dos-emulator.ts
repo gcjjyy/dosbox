@@ -46,6 +46,9 @@ interface DosboxFS {
 interface DosboxModule {
   FS: DosboxFS;
   HEAPF32: Float32Array;
+  SDL?: {
+    audioContext?: AudioContext;
+  };
   ccall: (name: string, returnType: string | null, argTypes: string[], args: unknown[]) => unknown;
   callMain: (args?: string[]) => void;
 }
@@ -324,7 +327,6 @@ export class DosEmulator {
       printErr: (text) => console.warn("[dosbox]", text),
       onAbort: (reason) => this.opts.onError?.(reason),
       onFrame: (_ptr, width, height) => this.handleFrame(width, height),
-      onAudio: (ptr, samples, rate) => this.handleAudio(module, ptr, samples, rate),
     });
     if (this.exiting) return;
     this.module = module;
@@ -337,7 +339,7 @@ export class DosEmulator {
 
     this.ci = this.createCommandInterface(module);
     this.attachListeners();
-    this.setupAudioUnlock();
+    this.setupSdlAudioUnlock();
     module.callMain(["-conf", "/dosbox.conf"]);
     this.opts.onReady?.(this.ci);
   }
@@ -464,41 +466,39 @@ export class DosEmulator {
     this.pushAudio(copy);
   }
 
-  private setupAudioUnlock(): void {
-    const setupOnce = async (): Promise<void> => {
-      if (this.audioCtx || this.audioUnlocking || this.exiting) return;
-      this.audioUnlocking = true;
-      try {
-        await this.setupAudio(this.audioSourceRate || DEFAULT_AUDIO_RATE);
+  private setupSdlAudioUnlock(): void {
+    const unlock = () => {
+      if (this.exiting) return;
+      const ctx = this.module?.SDL?.audioContext;
+      if (!ctx) return;
+      if (ctx.state === "running") {
         this.removeAudioUnlockListeners();
-      } catch (err) {
-        console.warn("[dos-emulator] audio init failed:", err);
-        const ctx = this.audioCtx as unknown as AudioContext | null;
-        if (ctx) {
-          ctx.removeEventListener("statechange", this.resumeAudioIfNeeded);
-          try { await ctx.close(); } catch { /* ignore */ }
-          this.audioCtx = null;
-        }
-        this.audioNode = null;
-      } finally {
-        this.audioUnlocking = false;
+        return;
+      }
+      if (ctx.state !== "closed") {
+        void ctx.resume().catch((err) => console.warn("[dos-emulator] SDL audio resume failed:", err));
       }
     };
-    const unlock = () => { void setupOnce(); };
     this.gestureUnlock = unlock;
     window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("mousedown", unlock, true);
+    window.addEventListener("touchstart", unlock, true);
     window.addEventListener("keydown", unlock, true);
+    window.addEventListener("click", unlock, true);
 
     const activation = (navigator as Navigator & { userActivation?: { hasBeenActive?: boolean; isActive?: boolean } }).userActivation;
     if (activation?.hasBeenActive || activation?.isActive) {
-      void setupOnce();
+      unlock();
     }
   }
 
   private removeAudioUnlockListeners(): void {
     if (!this.gestureUnlock) return;
     window.removeEventListener("pointerdown", this.gestureUnlock, true);
+    window.removeEventListener("mousedown", this.gestureUnlock, true);
+    window.removeEventListener("touchstart", this.gestureUnlock, true);
     window.removeEventListener("keydown", this.gestureUnlock, true);
+    window.removeEventListener("click", this.gestureUnlock, true);
     this.gestureUnlock = null;
   }
 
@@ -573,7 +573,7 @@ export class DosEmulator {
   }
 
   private resumeAudioIfNeeded = (): void => {
-    const ctx = this.audioCtx;
+    const ctx = this.audioCtx ?? this.module?.SDL?.audioContext ?? null;
     if (ctx && ctx.state !== "running" && ctx.state !== "closed") {
       void ctx.resume().catch(() => undefined);
     }
@@ -779,9 +779,7 @@ export class DosEmulator {
     window.removeEventListener("touchcancel", this.onTouchEnd, true);
     this.canvas.removeEventListener("contextmenu", this.onContextMenu);
     if (this.gestureUnlock) {
-      window.removeEventListener("pointerdown", this.gestureUnlock, true);
-      window.removeEventListener("keydown", this.gestureUnlock, true);
-      this.gestureUnlock = null;
+      this.removeAudioUnlockListeners();
     }
     if (this.ci) {
       try { await this.ci.exit(); } catch { /* ignore */ }

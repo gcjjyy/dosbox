@@ -191,6 +191,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
           </div>
         )}
       </main>
+      <div className="chrome-compositor-guard" aria-hidden="true" />
       {/* Always mount; hidden state uses opacity 0.01 (NOT 0) + inert.
           Load-bearing for Chrome on M-series Macs driving an external
           monitor: macOS otherwise promotes the DOS canvas to a direct-
