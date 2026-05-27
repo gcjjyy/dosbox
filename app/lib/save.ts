@@ -4,7 +4,7 @@ export interface SaveResult {
 }
 
 export async function saveToServer(persistBytes: Uint8Array): Promise<SaveResult> {
-  // js-dos v7 ci.persist() returns a Uint8Array zip of the changed FS.
+  // ci.persist() returns a Uint8Array zip of the changed C: drive files.
   // We POST the raw bytes; the server unzips and applies entry-by-entry.
   const res = await fetch("/api/save", {
     method: "POST",

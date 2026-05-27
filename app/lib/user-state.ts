@@ -1,9 +1,9 @@
 // app/lib/user-state.ts
 //
 // localStorage-backed per-user DOS state save. The save itself is the
-// Uint8Array returned by emulators' CommandInterface.persist(true) —
-// a ZIP of files changed since the initial bundle. Stored as base64
-// in localStorage so non-UTF-8 bytes don't get mangled.
+// Uint8Array returned by CommandInterface.persist(true): a ZIP of files
+// changed since the initial bundle. Stored as base64 in localStorage so
+// non-UTF-8 bytes don't get mangled.
 
 const STORAGE_KEY = "dosbox-user-state";
 

@@ -1,13 +1,13 @@
 // app/lib/dos-keymap.ts
 //
-// KeyboardEvent.code → js-dos / emulators keycode lookup.
+// KeyboardEvent.code → legacy virtual-key codes used by the UI.
 //
-// IMPORTANT: emulators' CommandInterface.sendKeyEvent / simulateKeyPress
-// expect GLFW-style keycodes — NOT SDL2 scancodes / USB HID usage IDs.
+// IMPORTANT: the virtual keyboard still uses these GLFW-style keycodes for
+// stability. dos-emulator.ts translates them to SDL 1.2 SDLKey values before
+// calling our self-built DOSBox WASM bridge.
 // (E.g. 'A' is 65 here, not 4; Enter is 257, not 40; Space is 32, not 44;
-// ArrowUp is 265, not 82.) The constants below are taken directly from the
-// KBD_* table in node_modules/js-dos/dist/js-dos.js. Right-side modifiers
-// match GLFW's 344/345/346 range; left-side modifiers match GLFW's 340-342.
+// ArrowUp is 265, not 82.) Right-side modifiers match GLFW's 344/345/346
+// range; left-side modifiers match GLFW's 340-342.
 
 export const keymap: Readonly<Record<string, number>> = {
   // Letters (uppercase ASCII)

@@ -8,7 +8,7 @@
 // registered, no error surfaced). Same-origin static URLs are the well-trodden
 // path. The file is tiny (~1 KB) so caching it for forever is fine.
 //
-// Architecture mirrors the upstream js-dos audio pipeline: a queue of mono
+// Architecture mirrors a conventional DOS audio pipeline: a queue of mono
 // Float32Array chunks pushed from the main thread, drained at the audio-thread
 // rate inside process().
 //
@@ -17,11 +17,8 @@
 // on average), so PRIME_THRESHOLD effectively *is* the baseline latency.
 //   PRIME_THRESHOLD = 512   →  ~10.7 ms @ 48 kHz baseline before audio starts
 //   MAX_QUEUE        = 2048 →  ~42.7 ms cap if producer briefly outpaces
-// We previously matched upstream js-dos's 2048/6144 (~42 / 128 ms) and that
-// turned out to be the dominant audible delay on desktop. js-dos can afford
-// 2048 because their AudioContext also uses a 2048-sample ScriptProcessor
-// quantum — our AudioWorklet runs at 128 samples per process() call (2.67 ms)
-// so a 512-sample cushion still leaves 4× headroom for postMessage jitter.
+// Our AudioWorklet runs at 128 samples per process() call (2.67 ms), so a
+// 512-sample cushion still leaves 4x headroom for postMessage jitter.
 
 class DosAudioProcessor extends AudioWorkletProcessor {
   constructor() {

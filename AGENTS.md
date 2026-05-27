@@ -2,29 +2,49 @@
 
 ## Project Structure & Module Organization
 
-This is a React Router v7 SSR TypeScript app for running a js-dos DOSBox environment in the browser. Application code lives in `app/`: UI in `app/components/`, routes in `app/routes/`, and shared logic in `app/lib/`. Unit tests sit beside code as `*.test.ts`, mainly under `app/lib/`. Static browser assets are in `public/`, including the audio worklet. Operational files live in `nginx/`, `ecosystem.config.cjs`, and `docs/superpowers/`. Do not hand-edit generated output such as `build/` or `public/js-dos/`.
+This is a React Router v7 SSR TypeScript app that runs a self-built DOSBox
+0.74-3 WebAssembly runtime in the browser. UI lives in `app/components/`, routes
+in `app/routes/`, and shared logic in `app/lib/`. Static runtime assets are in
+`public/`, including `public/wasm/dosbox0743.{js,wasm}` and the audio worklet.
+Tests sit beside code as `*.test.ts`, mostly under `app/lib/`.
 
 ## Build, Test, and Development Commands
 
 - `npm install` installs dependencies. Node `>=20` is required.
-- `npm run dev` copies js-dos files, then starts the dev server at `http://localhost:5173`.
-- `npm run build` copies js-dos files and creates the production build in `build/`.
-- `npm start` serves `build/server/index.js` for production-style local runs.
-- `npm run typecheck` runs React Router type generation and `tsc`; run it after route changes.
-- `npm run test` runs Vitest once. Use `npm run test:watch` while iterating.
+- `npm run dev` starts the dev server at `http://localhost:5173`.
+- `npm run build` creates the production build in `build/`.
+- `npm start` serves `build/server/index.js`.
+- `npm run typecheck` runs React Router typegen and `tsc`.
+- `npm run test` runs Vitest once; use `npm run test:watch` while iterating.
 
 ## Coding Style & Naming Conventions
 
-Use TypeScript with strict types and React function components. Match the surrounding style: two-space indentation, semicolons, named exports for shared helpers, and descriptive camelCase identifiers. Use the `~/*` alias for `app/*` imports. Keep server-only code in `*.server.ts` modules and out of client-reachable components. Route types come from generated `./+types/<route>` modules.
+Use strict TypeScript and React function components. Match local style:
+two-space indentation, semicolons, named exports for shared helpers, and
+descriptive camelCase identifiers. Use the `~/*` alias for `app/*` imports.
+Keep server-only code in `*.server.ts` modules and out of client components.
+Route types come from generated `./+types/<route>` modules.
 
 ## Testing Guidelines
 
-Vitest is the test runner. Add focused tests beside changed logic using the existing `*.test.ts` pattern, for example `app/lib/origin.test.ts`. Prefer small unit tests for path safety, payload validation, key mapping, options, and bundle behavior. Run `npm run test` before handoff; run `npm run typecheck` when routes or imports change.
+Vitest is the test runner. Add focused tests beside changed logic using the
+existing `*.test.ts` pattern, for example `app/lib/bundle.test.ts`. Prefer small
+unit tests for path safety, payload validation, key mapping, options, and
+bundle behavior. Run `npm run test`; run `npm run typecheck` after route or
+import changes.
 
 ## Commit & Pull Request Guidelines
 
-Recent commits use Conventional Commit style with scopes, such as `fix(dosbox): ...`, `feat(vkb): ...`, and `chore(scripts): ...`. Keep messages imperative and specific. Pull requests should describe the user-visible change, note tests run, link related issues or docs, and include screenshots for UI changes. Do not manually bump `package.json` versions; the repo-local pre-commit hook handles patch bumps.
+Recent commits use Conventional Commit style with scopes, such as
+`fix(dosbox): ...`, `feat(vkb): ...`, and `chore(scripts): ...`. Keep messages
+imperative and specific. Pull requests should describe the user-visible change,
+note tests run, link related issues or docs, and include screenshots for UI
+changes. If you manually bump `package.json`, the pre-commit hook should skip
+its own patch bump.
 
 ## Configuration & Safety Notes
 
-Runtime configuration is provided through `.env`: `DOS_ROOT`, `DOSBOX_ADMIN_PASSWORD`, `SESSION_SECRET`, optional `DOSBOX_CACHE_DIR`, and production `PORT`. Server filesystem writes must continue to flow through the existing safe path and save helpers. The server depends on system `zip(1)` for js-dos-compatible bundles; do not replace it with a Node ZIP library without validating emulator extraction.
+Runtime configuration is provided through `.env`: `DOS_ROOT`,
+`DOSBOX_ADMIN_PASSWORD`, `SESSION_SECRET`, optional `DOSBOX_CACHE_DIR`, and
+production `PORT`. Server filesystem writes must continue through the safe path
+and save helpers. The server depends on system `zip(1)` for large DOS bundles.

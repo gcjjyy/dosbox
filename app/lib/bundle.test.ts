@@ -42,24 +42,24 @@ function listZipEntries(buf: Buffer): Promise<string[]> {
 }
 
 describe("bundle", () => {
-  it("streamJsdosBundle lazy-builds and returns a zip with dosbox.conf + DOS files", async () => {
-    const { streamJsdosBundle } = await import("./bundle");
-    const { body } = await streamJsdosBundle();
+  it("streamDosBundle lazy-builds and returns a zip with DOS files only", async () => {
+    const { streamDosBundle } = await import("./bundle");
+    const { body } = await streamDosBundle();
     const buf = await streamToBuffer(body);
     const entries = await listZipEntries(buf);
-    expect(entries).toContain(".jsdos/dosbox.conf");
+    expect(entries).not.toContain("dosbox.conf");
     expect(entries).toContain("AUTOEXEC.BAT");
     expect(entries).toContain("BANGJA/GAME.EXE");
   });
 
-  it("rebuildBundle writes bundle.jsdos and bundle.etag to the cache dir", async () => {
+  it("rebuildBundle writes bundle.zip and bundle.etag to the cache dir", async () => {
     const { rebuildBundle } = await import("./bundle");
     const etag = await rebuildBundle();
-    const bundleStat = await fs.stat(path.join(CACHE_TMP, "bundle.jsdos"));
-    const confHashStat = await fs.stat(path.join(CACHE_TMP, "bundle.conf.sha256"));
+    const bundleStat = await fs.stat(path.join(CACHE_TMP, "bundle.zip"));
+    const format = await fs.readFile(path.join(CACHE_TMP, "bundle.format"), "utf8");
     const onDiskEtag = (await fs.readFile(path.join(CACHE_TMP, "bundle.etag"), "utf8")).trim();
     expect(bundleStat.size).toBeGreaterThan(0);
-    expect(confHashStat.size).toBe(64);
+    expect(format).toBe("dos-files-v2");
     expect(onDiskEtag).toBe(etag);
     expect(etag).toMatch(/^"[\w.-]+"$/);
   });
@@ -88,9 +88,14 @@ describe("bundle", () => {
 
   it("pins cycles to the default with an absolute step", async () => {
     const { DOSBOX_CONF } = await import("./bundle");
+    expect(DOSBOX_CONF).toContain("[sdl]");
+    expect(DOSBOX_CONF).toContain("autolock=false");
+    expect(DOSBOX_CONF).toContain("sensitivity=100");
+    expect(DOSBOX_CONF).toContain("usescancodes=false");
     expect(DOSBOX_CONF).toContain("core=auto");
     expect(DOSBOX_CONF).toContain("cputype=auto");
     expect(DOSBOX_CONF).toContain("cycles=fixed 20000");
+    expect(DOSBOX_CONF).toContain("mount c /c");
     expect(DOSBOX_CONF).toContain("cycleup=1000");
     expect(DOSBOX_CONF).toContain("cycledown=1000");
     expect(DOSBOX_CONF).toContain("[sblaster]");

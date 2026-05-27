@@ -54,8 +54,8 @@ export async function action({ request }: Route.ActionArgs) {
     assertSameOrigin(request);
     await requireAdmin(request);
 
-    // js-dos v7 ci.persist() returns a zip of the changed FS; the client POSTs
-    // those bytes as application/octet-stream. We unzip and apply entry-by-entry.
+    // ci.persist() returns a zip of the changed C: drive files; the client
+    // POSTs those bytes as application/octet-stream. We apply entry-by-entry.
     const ct = request.headers.get("content-type") ?? "";
     if (!ct.includes("application/octet-stream") && !ct.includes("application/zip")) {
       throw new InvalidPayload("expected application/octet-stream");

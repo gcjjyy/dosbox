@@ -32,7 +32,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
-        <script src="/js-dos/emulators/emulators.js" defer />
       </head>
       <body className="h-dvh w-screen overflow-hidden">
         {children}

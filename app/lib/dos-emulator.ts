@@ -1,12 +1,15 @@
 // app/lib/dos-emulator.ts
 //
-// Thin glue on top of the `emulators` WASM bridge. Owns the canvas
-// rendering loop, Web Audio output, physical keyboard forwarding, and
-// pointer-based mouse forwarding. Virtual keyboard calls in via
-// sendKeyDown/Up. No React, no js-dos UI.
+// Browser glue for our self-built DOSBox 0.74-3 WASM runtime. It loads the
+// generated Emscripten module, mounts the DOS archive into MEMFS, injects a
+// separately served dosbox.conf, and forwards keyboard/mouse/audio events.
 
-import { keymap } from "./dos-keymap";
+import { unzipSync, zipSync } from "fflate";
 import { PROCESSOR_NAME, WORKLET_URL } from "./dos-audio-worklet";
+
+const DOSBOX_SCRIPT_URL = "/wasm/dosbox0743.js";
+const DOSBOX_WASM_URL = "/wasm/dosbox0743.wasm";
+const DEFAULT_AUDIO_RATE = 44100;
 
 export interface CommandInterface {
   exit: () => Promise<void>;
@@ -29,80 +32,43 @@ export interface CommandInterfaceEvents {
   onExit: (fn: () => void) => void;
 }
 
-interface BackendOptions {
-  onExtractProgress?: (bundleIndex: number, file: string, extracted: number, total: number) => void;
+interface DosboxFS {
+  mkdir: (path: string) => void;
+  mkdirTree?: (path: string) => void;
+  writeFile: (path: string, data: Uint8Array | string) => void;
+  readFile: (path: string) => Uint8Array;
+  readdir: (path: string) => string[];
+  stat: (path: string) => { mode: number };
+  isDir: (mode: number) => boolean;
+  isFile: (mode: number) => boolean;
 }
 
-interface EmulatorsGlobal {
-  pathPrefix: string;
-  dosboxDirect: (init: Uint8Array[], options?: BackendOptions) => Promise<CommandInterface>;
-  dosboxXDirect: (init: Uint8Array[], options?: BackendOptions) => Promise<CommandInterface>;
+interface DosboxModule {
+  FS: DosboxFS;
+  HEAPF32: Float32Array;
+  ccall: (name: string, returnType: string | null, argTypes: string[], args: unknown[]) => unknown;
+  callMain: (args?: string[]) => void;
 }
+
+interface DosboxModuleOptions {
+  canvas: HTMLCanvasElement;
+  noInitialRun: boolean;
+  noExitRuntime: boolean;
+  locateFile: (path: string) => string;
+  print?: (text: string) => void;
+  printErr?: (text: string) => void;
+  onAbort?: (reason: unknown) => void;
+  onFrame?: (ptr: number, width: number, height: number, stride: number) => void;
+  onAudio?: (ptr: number, samples: number, rate: number) => void;
+}
+
+type DosboxFactory = (opts: DosboxModuleOptions) => Promise<DosboxModule>;
 
 declare global {
   interface Window {
-    emulators?: EmulatorsGlobal;
+    createDosbox?: DosboxFactory;
+    webkitAudioContext?: typeof AudioContext;
   }
-}
-
-// preventDefault exempt list — let browser/OS handle these.
-// Modifier + (R, T, W, N, L, F, S, P, +, -, 0~9): browser shortcuts.
-// Modifier + Tab: tab/app switching. F11: fullscreen. F12: devtools.
-const EXEMPT_MODIFIED = new Set([
-  "KeyR", "KeyT", "KeyW", "KeyN", "KeyL", "KeyF", "KeyS", "KeyP",
-  "Equal", "Minus",
-  "Digit0", "Digit1", "Digit2", "Digit3", "Digit4",
-  "Digit5", "Digit6", "Digit7", "Digit8", "Digit9",
-]);
-const EXEMPT_ALWAYS = new Set(["F11", "F12"]);
-
-function shouldForward(e: KeyboardEvent): boolean {
-  if (EXEMPT_ALWAYS.has(e.code)) return false;
-  const hasCtrlOrMeta = e.ctrlKey || e.metaKey;
-  if (hasCtrlOrMeta && EXEMPT_MODIFIED.has(e.code)) return false;
-  if ((e.ctrlKey || e.metaKey || e.altKey) && e.code === "Tab") return false;
-  return true;
-}
-
-// Passthrough shaders for a fullscreen textured quad. Y is flipped in the
-// vertex tex coords so row 0 of the uploaded image lands at the top of the
-// canvas (WebGL's clip-space y is up, image data row 0 is the top).
-const VS = `
-attribute vec2 aPos;
-attribute vec2 aTex;
-varying vec2 vTex;
-void main() {
-  gl_Position = vec4(aPos, 0.0, 1.0);
-  vTex = aTex;
-}`;
-const FS = `
-precision mediump float;
-varying vec2 vTex;
-uniform sampler2D uTex;
-void main() {
-  gl_FragColor = texture2D(uTex, vTex);
-}`;
-// 6 verts × (vec2 pos, vec2 tex). v inverted so v=0 maps to image row 0.
-const QUAD = new Float32Array([
-  -1, -1, 0, 1,
-   1, -1, 1, 1,
-  -1,  1, 0, 0,
-  -1,  1, 0, 0,
-   1, -1, 1, 1,
-   1,  1, 1, 0,
-]);
-
-function compileShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {
-  const sh = gl.createShader(type);
-  if (!sh) throw new Error("gl.createShader failed");
-  gl.shaderSource(sh, source);
-  gl.compileShader(sh);
-  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(sh) ?? "";
-    gl.deleteShader(sh);
-    throw new Error("shader compile failed: " + log);
-  }
-  return sh;
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
@@ -137,47 +103,178 @@ function waitForRunning(ctx: AudioContext, timeoutMs: number): Promise<void> {
   });
 }
 
+let dosboxFactoryPromise: Promise<DosboxFactory> | null = null;
+
+function loadDosboxFactory(): Promise<DosboxFactory> {
+  if (window.createDosbox) return Promise.resolve(window.createDosbox);
+  if (!dosboxFactoryPromise) {
+    dosboxFactoryPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = DOSBOX_SCRIPT_URL;
+      script.async = true;
+      script.onload = () => {
+        if (window.createDosbox) resolve(window.createDosbox);
+        else reject(new Error("createDosbox was not registered by dosbox0743.js"));
+      };
+      script.onerror = () => reject(new Error(`failed to load ${DOSBOX_SCRIPT_URL}`));
+      document.head.appendChild(script);
+    });
+  }
+  return dosboxFactoryPromise;
+}
+
+function normalizeZipName(name: string): string | null {
+  const rel = name.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!rel || rel.endsWith("/")) return null;
+  if (rel.split("/").some((part) => part === ".." || part === "" || part.startsWith("."))) return null;
+  return rel;
+}
+
+function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function toSDLMouseButton(button: number): number {
+  if (button === 1) return 3;
+  if (button === 2) return 2;
+  return 1;
+}
+
+interface DomKeyInfo {
+  keyCode: number;
+  key: string;
+  code: string;
+  location?: number;
+  charCode?: number;
+}
+
+function toDOMKeyInfo(code: number): DomKeyInfo | null {
+  if (code >= 65 && code <= 90) {
+    const ch = String.fromCharCode(code);
+    return { keyCode: code, key: ch.toLowerCase(), code: `Key${ch}`, charCode: code + 32 };
+  }
+  if (code >= 48 && code <= 57) {
+    const ch = String.fromCharCode(code);
+    return { keyCode: code, key: ch, code: `Digit${ch}`, charCode: code };
+  }
+  if (code >= 290 && code <= 301) {
+    const n = code - 289;
+    return { keyCode: 111 + n, key: `F${n}`, code: `F${n}` };
+  }
+  if (code >= 320 && code <= 329) {
+    const n = code - 320;
+    return { keyCode: 96 + n, key: String(n), code: `Numpad${n}`, location: 3, charCode: 48 + n };
+  }
+  const map: Record<number, DomKeyInfo> = {
+    32: { keyCode: 32, key: " ", code: "Space", charCode: 32 },
+    39: { keyCode: 222, key: "'", code: "Quote", charCode: 39 },
+    44: { keyCode: 188, key: ",", code: "Comma", charCode: 44 },
+    45: { keyCode: 189, key: "-", code: "Minus", charCode: 45 },
+    46: { keyCode: 190, key: ".", code: "Period", charCode: 46 },
+    47: { keyCode: 191, key: "/", code: "Slash", charCode: 47 },
+    59: { keyCode: 186, key: ";", code: "Semicolon", charCode: 59 },
+    61: { keyCode: 187, key: "=", code: "Equal", charCode: 61 },
+    91: { keyCode: 219, key: "[", code: "BracketLeft", charCode: 91 },
+    92: { keyCode: 220, key: "\\", code: "Backslash", charCode: 92 },
+    93: { keyCode: 221, key: "]", code: "BracketRight", charCode: 93 },
+    96: { keyCode: 192, key: "`", code: "Backquote", charCode: 96 },
+    256: { keyCode: 27, key: "Escape", code: "Escape" },
+    257: { keyCode: 13, key: "Enter", code: "Enter" },
+    258: { keyCode: 9, key: "Tab", code: "Tab" },
+    259: { keyCode: 8, key: "Backspace", code: "Backspace" },
+    260: { keyCode: 45, key: "Insert", code: "Insert" },
+    261: { keyCode: 46, key: "Delete", code: "Delete" },
+    262: { keyCode: 39, key: "ArrowRight", code: "ArrowRight" },
+    263: { keyCode: 37, key: "ArrowLeft", code: "ArrowLeft" },
+    264: { keyCode: 40, key: "ArrowDown", code: "ArrowDown" },
+    265: { keyCode: 38, key: "ArrowUp", code: "ArrowUp" },
+    266: { keyCode: 33, key: "PageUp", code: "PageUp" },
+    267: { keyCode: 34, key: "PageDown", code: "PageDown" },
+    268: { keyCode: 36, key: "Home", code: "Home" },
+    269: { keyCode: 35, key: "End", code: "End" },
+    280: { keyCode: 20, key: "CapsLock", code: "CapsLock" },
+    281: { keyCode: 145, key: "ScrollLock", code: "ScrollLock" },
+    282: { keyCode: 144, key: "NumLock", code: "NumLock" },
+    330: { keyCode: 110, key: ".", code: "NumpadDecimal", location: 3, charCode: 46 },
+    331: { keyCode: 111, key: "/", code: "NumpadDivide", location: 3, charCode: 47 },
+    332: { keyCode: 106, key: "*", code: "NumpadMultiply", location: 3, charCode: 42 },
+    333: { keyCode: 109, key: "-", code: "NumpadSubtract", location: 3, charCode: 45 },
+    334: { keyCode: 107, key: "+", code: "NumpadAdd", location: 3, charCode: 43 },
+    335: { keyCode: 13, key: "Enter", code: "NumpadEnter", location: 3 },
+    340: { keyCode: 16, key: "Shift", code: "ShiftLeft", location: 1 },
+    341: { keyCode: 17, key: "Control", code: "ControlLeft", location: 1 },
+    342: { keyCode: 18, key: "Alt", code: "AltLeft", location: 1 },
+    344: { keyCode: 16, key: "Shift", code: "ShiftRight", location: 2 },
+    345: { keyCode: 17, key: "Control", code: "ControlRight", location: 2 },
+    346: { keyCode: 18, key: "Alt", code: "AltRight", location: 2 },
+  };
+  return map[code] ?? null;
+}
+
+function dispatchKeyboard(type: "keydown" | "keyup" | "keypress", info: DomKeyInfo): void {
+  const charCode = type === "keypress" ? (info.charCode ?? info.keyCode) : 0;
+  const event = new KeyboardEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    key: info.key,
+    code: info.code,
+    location: info.location ?? 0,
+  });
+  Object.defineProperties(event, {
+    keyCode: { get: () => info.keyCode },
+    which: { get: () => type === "keypress" ? charCode : info.keyCode },
+    charCode: { get: () => charCode },
+    location: { get: () => info.location ?? 0 },
+  });
+  document.dispatchEvent(event);
+}
+
+class EventHub implements CommandInterfaceEvents {
+  private frameFns: Array<(rgb: Uint8Array | null, rgba: Uint8Array | null) => void> = [];
+  private frameSizeFns: Array<(w: number, h: number) => void> = [];
+  private soundFns: Array<(samples: Float32Array) => void> = [];
+  private exitFns: Array<() => void> = [];
+
+  onFrame(fn: (rgb: Uint8Array | null, rgba: Uint8Array | null) => void): void { this.frameFns.push(fn); }
+  onFrameSize(fn: (w: number, h: number) => void): void { this.frameSizeFns.push(fn); }
+  onSoundPush(fn: (samples: Float32Array) => void): void { this.soundFns.push(fn); }
+  onExit(fn: () => void): void { this.exitFns.push(fn); }
+
+  emitFrameSize(w: number, h: number): void { for (const fn of this.frameSizeFns) fn(w, h); }
+  emitFrame(): void { for (const fn of this.frameFns) fn(null, null); }
+  emitSound(samples: Float32Array): void { for (const fn of this.soundFns) fn(samples); }
+  emitExit(): void { for (const fn of this.exitFns) fn(); }
+}
+
 export interface DosEmulatorOpts {
   canvas: HTMLCanvasElement;
   bundle: Uint8Array;
-  /** Optional per-user save overlay. emulators layers later entries over earlier
-   *  ones, so files in this zip overwrite the matching paths from `bundle`. */
+  config: string;
   overlay?: Uint8Array | null;
   onReady?: (ci: CommandInterface) => void;
   onFirstFrame?: () => void;
   onError?: (err: unknown) => void;
-  /** Fraction in [0,1] of bundle extraction progress reported by the WASM bridge. */
   onExtractProgress?: (fraction: number) => void;
 }
 
 export class DosEmulator {
   private opts: DosEmulatorOpts;
   private canvas: HTMLCanvasElement;
-  private gl: WebGLRenderingContext;
-  private program: WebGLProgram | null = null;
-  private tex: WebGLTexture | null = null;
-  private quadBuf: WebGLBuffer | null = null;
+  private module: DosboxModule | null = null;
   private ci: CommandInterface | null = null;
+  private events = new EventHub();
   private audioCtx: AudioContext | null = null;
   private audioNode: AudioWorkletNode | null = null;
-  // Ratio for linear-interpolation resampling in pushAudio. iOS Safari
-  // silently coerces our requested 22050 Hz context to the device native
-  // rate (48000/44100), so we let it pick the rate and resample DOS samples
-  // (sourceRate) into the context's rate (ctx.sampleRate) on the main thread
-  // before posting to the worklet.
+  private audioSourceRate = DEFAULT_AUDIO_RATE;
   private resampleRatio = 1;
   private firstFrame = false;
   private exiting = false;
-  // Latest pixel buffer staged by onFrame; consumed by the next RAF tick.
-  // Decoupling emulator output rate from display vsync is what stops the
-  // Chrome/Mac compositor from thrashing the display state.
-  private pendingBuf: Uint8Array | null = null;
-  private pendingFmt = 0;
-  private texW = 0;
-  private texH = 0;
-  private rafId = 0;
+  private baseline = new Map<string, Uint8Array>();
 
-  // Touch gesture state. TouchEvent.touches is the source of truth on iOS.
   private leftTouchDown = false;
   private rightTouchActive = false;
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -187,8 +284,6 @@ export class DosEmulator {
   private touchMoved = false;
   private clickReleaseTimers = new Set<ReturnType<typeof setTimeout>>();
 
-  private readonly onKeyDown: (e: KeyboardEvent) => void;
-  private readonly onKeyUp: (e: KeyboardEvent) => void;
   private readonly onPointerDown: (e: PointerEvent) => void;
   private readonly onPointerMove: (e: PointerEvent) => void;
   private readonly onPointerUp: (e: PointerEvent) => void;
@@ -201,30 +296,8 @@ export class DosEmulator {
   constructor(opts: DosEmulatorOpts) {
     this.opts = opts;
     this.canvas = opts.canvas;
-    // preserveDrawingBuffer: true is load-bearing for Chrome on macOS.
-    // With it false (the WebGL default), the browser clears the canvas
-    // backbuffer after each compositor read. Our RAF only fires when the
-    // emulator pushes a new frame, so any display vsync without a fresh
-    // emulator frame (DOS modes run 60-70 Hz, occasional CPU dips) shows a
-    // cleared (black) canvas → whole-window flicker. Safari masks this with
-    // a different compositor path. When the virtual keyboard is mounted
-    // its fixed+transform layer accidentally promotes the canvas to its own
-    // composited layer, which also masked the bug — but the underlying
-    // race exists in both states.
-    const gl = this.canvas.getContext("webgl", {
-      alpha: false,
-      antialias: false,
-      preserveDrawingBuffer: true,
-    });
-    if (!gl) throw new Error("webgl context unavailable");
-    this.gl = gl;
-    // "auto" lets the compositor smooth any further upscale beyond the
-    // canvas framebuffer, matching the LINEAR sampling inside GL.
     this.canvas.style.imageRendering = "auto";
-    this.setupGL();
 
-    this.onKeyDown = (e) => this.handleKey(e, true);
-    this.onKeyUp = (e) => this.handleKey(e, false);
     this.onPointerDown = (e) => this.handlePointer(e, "down");
     this.onPointerMove = (e) => this.handlePointer(e, "move");
     this.onPointerUp = (e) => this.handlePointer(e, "up");
@@ -237,183 +310,182 @@ export class DosEmulator {
   }
 
   private async boot(): Promise<void> {
-    const emu = window.emulators;
-    if (!emu) throw new Error("window.emulators not loaded");
-    emu.pathPrefix = "/js-dos/emulators/";
-    const onExtract = this.opts.onExtractProgress;
-    const initFs = this.opts.overlay
-      ? [this.opts.bundle, this.opts.overlay]
-      : [this.opts.bundle];
-    const ci = await emu.dosboxXDirect(initFs, onExtract ? {
-      onExtractProgress: (_idx, _file, extracted, total) => {
-        if (total > 0) onExtract(Math.min(1, extracted / total));
+    const factory = await loadDosboxFactory();
+    const module = await factory({
+      canvas: this.canvas,
+      noInitialRun: true,
+      noExitRuntime: true,
+      locateFile: (file) => file.endsWith(".wasm") ? DOSBOX_WASM_URL : `/wasm/${file}`,
+      print: (text) => console.log("[dosbox]", text),
+      printErr: (text) => console.warn("[dosbox]", text),
+      onAbort: (reason) => this.opts.onError?.(reason),
+      onFrame: (_ptr, width, height) => this.handleFrame(width, height),
+      onAudio: (ptr, samples, rate) => this.handleAudio(module, ptr, samples, rate),
+    });
+    if (this.exiting) return;
+    this.module = module;
+
+    this.mountDrive(module, this.opts.bundle, 0, 0.8);
+    if (this.opts.overlay) this.mountDrive(module, this.opts.overlay, 0.8, 0.95);
+    module.FS.writeFile("/dosbox.conf", this.opts.config);
+    this.baseline = this.snapshotDrive(module);
+    this.opts.onExtractProgress?.(1);
+
+    this.ci = this.createCommandInterface(module);
+    this.attachListeners();
+    this.setupAudioUnlock();
+    module.callMain(["-conf", "/dosbox.conf"]);
+    this.opts.onReady?.(this.ci);
+  }
+
+  private createCommandInterface(module: DosboxModule): CommandInterface {
+    return {
+      exit: async () => {
+        module.ccall("exit_dosbox", null, [], []);
+        this.events.emitExit();
       },
-    } : undefined);
-    if (this.exiting) {
-      await ci.exit().catch(() => undefined);
-      return;
-    }
-    this.ci = ci;
-
-    const events = ci.events();
-    const gl = this.gl;
-    events.onFrameSize((w, h) => {
-      this.canvas.width = w;
-      this.canvas.height = h;
-      this.texW = w;
-      this.texH = h;
-      gl.viewport(0, 0, w, h);
-      this.pendingBuf = null;
-    });
-    events.onFrame((rgb, rgba) => {
-      const src = rgba ?? rgb;
-      if (!src) return;
-      // Defensive copy: the WASM bridge reuses this buffer between frames.
-      // Cheap allocation, prevents tearing if RAF fires after a new frame
-      // has overwritten the old contents.
-      this.pendingBuf = new Uint8Array(src);
-      this.pendingFmt = rgba ? gl.RGBA : gl.RGB;
-      // Coalesce: if a RAF is already scheduled, the latest buffer simply
-      // replaces the previous one — dropping intermediate frames keeps GPU
-      // work in lockstep with display vsync.
-      if (this.rafId === 0) this.rafId = requestAnimationFrame(this.renderFrame);
-    });
-
-    // ── Audio ─────────────────────────────────────────────────────
-    // Pull-based pipeline using AudioWorklet (replacement for the old
-    // per-chunk createBufferSource scheduler that was dropping ~all chunks on
-    // mobile because a 10 ms MAX_LEAD cap couldn't survive Worker→main-thread
-    // postMessage jitter). Pattern mirrors upstream js-dos's ring-buffer +
-    // ScriptProcessorNode, but with the modern (non-deprecated) Worklet API.
-    //
-    // Setup is deferred to first user gesture: iOS Safari has well-known
-    // failure modes where an AudioContext created outside a gesture stays
-    // silent even after resume(). Doing the creation + addModule + node
-    // wiring synchronously inside the gesture callback is the well-trodden
-    // path. Desktop Chrome doesn't care; mobile Safari does.
-    //
-    // events.onSoundPush is registered immediately (sampleRate>0), so
-    // pre-gesture chunks reach pushAudio. They no-op (audioNode is null) —
-    // same effective behavior as the old "drop while suspended" path.
-    const sampleRate = ci.soundFrequency();
-    if (sampleRate > 0) {
-      events.onSoundPush((samples) => this.pushAudio(samples));
-
-      // First gesture wins. Each handler removes the other.
-      const setupOnce = async (): Promise<void> => {
-        if (this.gestureUnlock) {
-          window.removeEventListener("pointerdown", this.gestureUnlock, true);
-          window.removeEventListener("keydown", this.gestureUnlock, true);
-          this.gestureUnlock = null;
+      soundFrequency: () => this.audioSourceRate,
+      simulateKeyPress: (...keyCodes: number[]) => {
+        for (const code of keyCodes) {
+          this.sendKey(code, true);
+          this.sendKey(code, false);
         }
-        try {
-          await this.setupAudio(sampleRate);
-        } catch (err) {
-          // Audio failure must never break video/input.
-          console.warn("[dos-emulator] audio init failed:", err);
-          if (this.audioCtx) {
-            try { await this.audioCtx.close(); } catch { /* ignore */ }
-            this.audioCtx = null;
-          }
-          this.audioNode = null;
-        }
-      };
-      const unlock = () => { void setupOnce(); };
-      this.gestureUnlock = unlock;
-      window.addEventListener("pointerdown", unlock, true);
-      window.addEventListener("keydown", unlock, true);
-    }
-
-    // ── Listeners ─────────────────────────────────────────────────
-    window.addEventListener("keydown", this.onKeyDown);
-    window.addEventListener("keyup", this.onKeyUp);
-    this.canvas.addEventListener("pointerdown", this.onPointerDown);
-    this.canvas.addEventListener("pointermove", this.onPointerMove);
-    this.canvas.addEventListener("pointerup", this.onPointerUp);
-    this.canvas.addEventListener("pointercancel", this.onPointerUp);
-    window.addEventListener("touchstart", this.onTouchStart, { passive: false, capture: true });
-    window.addEventListener("touchmove", this.onTouchMove, { passive: false, capture: true });
-    window.addEventListener("touchend", this.onTouchEnd, { passive: false, capture: true });
-    window.addEventListener("touchcancel", this.onTouchEnd, { passive: false, capture: true });
-    // Suppress browser right-click menu on the DOS canvas
-    this.canvas.addEventListener("contextmenu", this.onContextMenu);
-
-    this.opts.onReady?.(ci);
+      },
+      sendKeyEvent: (keyCode, pressed) => this.sendKey(keyCode, pressed),
+      sendMouseMotion: (x, y) => {
+        const px = Math.round(Math.max(0, Math.min(1, x)) * Math.max(1, this.canvas.width));
+        const py = Math.round(Math.max(0, Math.min(1, y)) * Math.max(1, this.canvas.height));
+        module.ccall("send_mouse_motion", null, ["number", "number"], [px, py]);
+      },
+      sendMouseRelativeMotion: (_x, _y) => undefined,
+      sendMouseButton: (button, pressed) => {
+        module.ccall("send_mouse_button", null, ["number", "number"], [toSDLMouseButton(button), pressed ? 1 : 0]);
+      },
+      sendMouseSync: () => undefined,
+      persist: async () => this.persistDrive(module),
+      sendBackendEvent: () => undefined,
+      events: () => this.events,
+    };
   }
 
-  private setupGL(): void {
-    const gl = this.gl;
-    const vs = compileShader(gl, gl.VERTEX_SHADER, VS);
-    const fs = compileShader(gl, gl.FRAGMENT_SHADER, FS);
-    const prog = gl.createProgram();
-    if (!prog) throw new Error("gl.createProgram failed");
-    gl.attachShader(prog, vs);
-    gl.attachShader(prog, fs);
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      const log = gl.getProgramInfoLog(prog) ?? "";
-      throw new Error("program link failed: " + log);
-    }
-    gl.useProgram(prog);
-    this.program = prog;
-
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, QUAD, gl.STATIC_DRAW);
-    this.quadBuf = buf;
-
-    const aPos = gl.getAttribLocation(prog, "aPos");
-    const aTex = gl.getAttribLocation(prog, "aTex");
-    gl.enableVertexAttribArray(aPos);
-    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
-    gl.enableVertexAttribArray(aTex);
-    gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
-
-    const tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    // LINEAR smooths the non-integer upscale from DOS framebuffer to canvas —
-    // notably 720x400 text mode into a 640x480-locked viewport, where NEAREST
-    // produced visibly broken glyph stems.
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    // RGB rows for odd widths (e.g. 320*3=960 is %4 but 321*3=963 is not) —
-    // tell the GPU not to expect 4-byte row alignment.
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0]));
-    this.tex = tex;
-
-    const uTex = gl.getUniformLocation(prog, "uTex");
-    gl.activeTexture(gl.TEXTURE0);
-    gl.uniform1i(uTex, 0);
-    gl.clearColor(0, 0, 0, 1);
+  private sendKey(code: number, pressed: boolean): void {
+    const info = toDOMKeyInfo(code);
+    if (!info) return;
+    dispatchKeyboard(pressed ? "keydown" : "keyup", info);
+    if (pressed && info.charCode) dispatchKeyboard("keypress", info);
   }
 
-  private readonly renderFrame = (): void => {
-    this.rafId = 0;
-    const gl = this.gl;
-    const buf = this.pendingBuf;
-    if (!buf || this.texW === 0 || this.texH === 0) return;
-    this.pendingBuf = null;
-    gl.texImage2D(gl.TEXTURE_2D, 0, this.pendingFmt, this.texW, this.texH, 0, this.pendingFmt, gl.UNSIGNED_BYTE, buf);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  private mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): void {
+    this.ensureDir(module, "/c");
+    const entries = unzipSync(zipBytes);
+    const files: Array<[string, Uint8Array]> = [];
+    for (const [name, data] of Object.entries(entries)) {
+      const rel = normalizeZipName(name);
+      if (rel) files.push([rel, data]);
+    }
+    const total = Math.max(1, files.length);
+    files.forEach(([rel, data], idx) => {
+      const dest = `/c/${rel}`;
+      const slash = dest.lastIndexOf("/");
+      if (slash > 0) this.ensureDir(module, dest.slice(0, slash));
+      module.FS.writeFile(dest, data);
+      this.opts.onExtractProgress?.(progressBase + progressSpan * ((idx + 1) / total));
+    });
+  }
+
+  private ensureDir(module: DosboxModule, dir: string): void {
+    if (module.FS.mkdirTree) {
+      try { module.FS.mkdirTree(dir); return; } catch { /* fall through */ }
+    }
+    let cur = "";
+    for (const part of dir.split("/")) {
+      if (!part) continue;
+      cur += `/${part}`;
+      try { module.FS.mkdir(cur); } catch { /* already exists */ }
+    }
+  }
+
+  private snapshotDrive(module: DosboxModule): Map<string, Uint8Array> {
+    const out = new Map<string, Uint8Array>();
+    for (const [rel, bytes] of this.readDrive(module)) out.set(rel, bytes);
+    return out;
+  }
+
+  private readDrive(module: DosboxModule): Array<[string, Uint8Array]> {
+    const files: Array<[string, Uint8Array]> = [];
+    const rec = (dir: string, relDir: string) => {
+      for (const name of module.FS.readdir(dir)) {
+        if (name === "." || name === "..") continue;
+        const abs = `${dir}/${name}`;
+        const rel = relDir ? `${relDir}/${name}` : name;
+        const st = module.FS.stat(abs);
+        if (module.FS.isDir(st.mode)) rec(abs, rel);
+        else if (module.FS.isFile(st.mode)) files.push([rel, new Uint8Array(module.FS.readFile(abs))]);
+      }
+    };
+    rec("/c", "");
+    return files;
+  }
+
+  private persistDrive(module: DosboxModule): Uint8Array | null {
+    const changed: Record<string, Uint8Array> = {};
+    for (const [rel, bytes] of this.readDrive(module)) {
+      const base = this.baseline.get(rel);
+      if (!base || !arraysEqual(base, bytes)) changed[rel] = bytes;
+    }
+    const names = Object.keys(changed);
+    if (names.length === 0) return null;
+    return zipSync(changed);
+  }
+
+  private handleFrame(width: number, height: number): void {
+    if (width > 0 && height > 0 && (this.canvas.width !== width || this.canvas.height !== height)) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+      this.events.emitFrameSize(width, height);
+    }
+    this.events.emitFrame();
     if (!this.firstFrame) {
       this.firstFrame = true;
       this.opts.onFirstFrame?.();
     }
-  };
+  }
+
+  private handleAudio(module: DosboxModule, ptr: number, samples: number, rate: number): void {
+    if (rate > 0) this.audioSourceRate = rate;
+    const start = ptr >> 2;
+    const copy = new Float32Array(module.HEAPF32.subarray(start, start + samples));
+    this.events.emitSound(copy);
+    this.pushAudio(copy);
+  }
+
+  private setupAudioUnlock(): void {
+    const setupOnce = async (): Promise<void> => {
+      if (this.gestureUnlock) {
+        window.removeEventListener("pointerdown", this.gestureUnlock, true);
+        window.removeEventListener("keydown", this.gestureUnlock, true);
+        this.gestureUnlock = null;
+      }
+      try {
+        await this.setupAudio(this.audioSourceRate || DEFAULT_AUDIO_RATE);
+      } catch (err) {
+        console.warn("[dos-emulator] audio init failed:", err);
+        if (this.audioCtx) {
+          try { await this.audioCtx.close(); } catch { /* ignore */ }
+          this.audioCtx = null;
+        }
+        this.audioNode = null;
+      }
+    };
+    const unlock = () => { void setupOnce(); };
+    this.gestureUnlock = unlock;
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("keydown", unlock, true);
+  }
 
   private pushAudio(samples: Float32Array): void {
     const node = this.audioNode;
     if (!node || samples.length === 0) return;
-    // Defensive copy regardless (WASM reuses its buffer). When the context
-    // sample rate matches the DOS source rate, send as-is; otherwise linearly
-    // interpolate to the context rate on this thread. The worklet just plays
-    // whatever it receives at its native rate — no rate handling inside the
-    // worklet keeps it simple. Per-chunk resampling has tiny phase
-    // discontinuities at chunk boundaries but they're inaudible for DOS
-    // audio (no continuous tonal content sensitive to phase jitter).
     const ratio = this.resampleRatio;
     let toSend: Float32Array;
     if (Math.abs(ratio - 1) < 0.001) {
@@ -437,74 +509,35 @@ export class DosEmulator {
 
   private async setupAudio(sourceRate: number): Promise<void> {
     if (this.audioCtx || this.exiting) return;
-
-    // Safari (<14.5) only exposed webkitAudioContext. Current iOS Safari has
-    // both names, but keep the fallback for the long tail.
     const Ctor: typeof AudioContext | undefined =
-      typeof AudioContext !== "undefined"
-        ? AudioContext
-        : (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      typeof AudioContext !== "undefined" ? AudioContext : window.webkitAudioContext;
     if (!Ctor) throw new Error("AudioContext unavailable");
 
-    // Match upstream js-dos: request the DOS mixer rate from AudioContext.
-    // On desktop and browsers that honor the request, ctx.sampleRate ===
-    // sourceRate and the resample fast-path in pushAudio is a no-op (ratio=1).
-    //
-    // CRITICAL: pass ONLY {sampleRate}. Adding latencyHint:"interactive"
-    // (or any "unlock dance" with a silent BufferSource / oscillator, or
-    // `await`ing resume()) caused iOS Safari to leave the context stuck in
-    // state="suspended" forever even from inside a gesture handler. The
-    // dynamic resampleRatio handles whatever the browser actually picks.
     try {
       this.audioCtx = new Ctor({ sampleRate: sourceRate });
     } catch {
       this.audioCtx = new Ctor();
     }
     this.resampleRatio = this.audioCtx.sampleRate / sourceRate;
-    // WebKit (macOS/iOS Safari) interrupts the audio session whenever a
-    // blocking system dialog (window.confirm/alert) appears or the tab is
-    // backgrounded, dropping the context to "suspended"/"interrupted" and
-    // NOT auto-resuming — audio stays dead until a fresh AudioContext is made
-    // (i.e. a page reload). Re-kick resume() on every statechange so the
-    // context recovers on its own as soon as the interruption ends. Chrome
-    // never hits this path. See also resumeAudioIfNeeded() on user gestures.
     this.audioCtx.addEventListener("statechange", this.resumeAudioIfNeeded);
     if (!this.audioCtx.audioWorklet || typeof this.audioCtx.audioWorklet.addModule !== "function") {
       throw new Error("AudioWorklet API missing");
     }
 
-    // Kick resume() inside the gesture's task. Don't await it: WebKit has
-    // been observed to return a Promise that never resolves even when
-    // ctx.state actually transitions to "running". Poll state instead.
     void this.audioCtx.resume().catch(() => undefined);
     await waitForRunning(this.audioCtx, 2000);
-
-    await withTimeout(
-      this.audioCtx.audioWorklet.addModule(WORKLET_URL),
-      6000,
-      "addModule",
-    );
+    await withTimeout(this.audioCtx.audioWorklet.addModule(WORKLET_URL), 6000, "addModule");
     if (this.exiting) return;
 
-    // outputChannelCount intentionally NOT specified — let the platform
-    // pick. Some iOS Safari builds reject [1] mono explicitly; the worklet
-    // handles both mono and N-channel outputs (mirrors mono → all channels).
     this.audioNode = new AudioWorkletNode(this.audioCtx, PROCESSOR_NAME, {
       numberOfInputs: 0,
       numberOfOutputs: 1,
     });
     this.audioNode.connect(this.audioCtx.destination);
-
-    // Re-kick resume after the audio graph is wired. iOS sometimes wants
-    // the destination to be a non-empty graph before it'll commit.
     void this.audioCtx.resume().catch(() => undefined);
     await waitForRunning(this.audioCtx, 1500);
   }
 
-  // Re-kick resume() if WebKit dropped the context out of "running" (system
-  // dialog / tab switch interruption). Arrow property so it can be both an
-  // event listener and a per-gesture call without rebinding. No-op on Chrome
-  // (the context is already "running"), cheap (one state compare) otherwise.
   private resumeAudioIfNeeded = (): void => {
     const ctx = this.audioCtx;
     if (ctx && ctx.state !== "running" && ctx.state !== "closed") {
@@ -512,14 +545,16 @@ export class DosEmulator {
     }
   };
 
-  private handleKey(e: KeyboardEvent, pressed: boolean): void {
-    this.resumeAudioIfNeeded();
-    if (!this.ci) return;
-    const code = keymap[e.code];
-    if (code === undefined) return;
-    if (!shouldForward(e)) return;
-    e.preventDefault();
-    this.ci.sendKeyEvent(code, pressed);
+  private attachListeners(): void {
+    this.canvas.addEventListener("pointerdown", this.onPointerDown);
+    this.canvas.addEventListener("pointermove", this.onPointerMove);
+    this.canvas.addEventListener("pointerup", this.onPointerUp);
+    this.canvas.addEventListener("pointercancel", this.onPointerUp);
+    window.addEventListener("touchstart", this.onTouchStart, { passive: false, capture: true });
+    window.addEventListener("touchmove", this.onTouchMove, { passive: false, capture: true });
+    window.addEventListener("touchend", this.onTouchEnd, { passive: false, capture: true });
+    window.addEventListener("touchcancel", this.onTouchEnd, { passive: false, capture: true });
+    this.canvas.addEventListener("contextmenu", this.onContextMenu);
   }
 
   private handlePointer(e: PointerEvent, kind: "down" | "move" | "up"): void {
@@ -527,37 +562,9 @@ export class DosEmulator {
     if (!this.ci) return;
     if (e.pointerType === "touch" && "TouchEvent" in window) return;
     if (Date.now() < this.suppressMouseUntil) return;
-    e.preventDefault();
-    if (kind === "down") {
-      try { this.canvas.setPointerCapture(e.pointerId); } catch { /* pointer may already be inactive */ }
-    } else if (kind === "up") {
-      try { this.canvas.releasePointerCapture(e.pointerId); } catch { /* pointer may already be released */ }
-    }
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    const rx = (e.clientX - rect.left) / rect.width;
-    const ry = (e.clientY - rect.top) / rect.height;
-    const cx = Math.max(0, Math.min(1, rx));
-    const cy = Math.max(0, Math.min(1, ry));
-
-    // Mouse / pen — unchanged button-index behavior.
-    this.ci.sendMouseMotion(cx, cy);
-    if (kind === "move") {
-      this.ci.sendMouseSync();
-      return;
-    }
-    // Browser MouseEvent.button -> DOSBox button index:
-    // browser 0 = left, 1 = middle, 2 = right
-    // DOSBox  0 = left, 1 = right,  2 = middle
-    const button = e.button === 2 ? 1 : e.button === 1 ? 2 : 0;
-    this.ci.sendMouseButton(button, kind === "down");
-    this.ci.sendMouseSync();
+    if (kind === "down") this.focusCanvas();
   }
 
-  // Touch gesture model:
-  //  · 1 finger: left button down, drag with motion, release on lift.
-  //  · 2 fingers: cancel any left hold and emit a right click (button 1).
-  //  · Long press: fallback right click for iOS users who expect it.
   private coordsFromClient(clientX: number, clientY: number): { x: number; y: number } | null {
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
@@ -567,6 +574,10 @@ export class DosEmulator {
       x: Math.max(0, Math.min(1, rx)),
       y: Math.max(0, Math.min(1, ry)),
     };
+  }
+
+  private focusCanvas(): void {
+    try { this.canvas.focus({ preventScroll: true }); } catch { /* ignore */ }
   }
 
   private isInsideCanvas(clientX: number, clientY: number): boolean {
@@ -588,6 +599,7 @@ export class DosEmulator {
 
     if (kind === "down" && touches.length >= 1 && !this.touchStartedOnCanvas) {
       this.touchStartedOnCanvas = this.isInsideCanvas(touches[0].clientX, touches[0].clientY);
+      if (this.touchStartedOnCanvas) this.focusCanvas();
     }
     if (!this.touchStartedOnCanvas) return;
 
@@ -698,35 +710,31 @@ export class DosEmulator {
     this.clickReleaseTimers.add(timer);
   }
 
-  // ── Public API (used by VirtualKeyboard) ─────────────────────────
   sendKeyDown(scancode: number): void { this.ci?.sendKeyEvent(scancode, true); }
   sendKeyUp(scancode: number): void { this.ci?.sendKeyEvent(scancode, false); }
   sendKeyTap(scancode: number): void { this.ci?.simulateKeyPress(scancode); }
 
-  // Trigger dosbox-x's cycle mapper handlers by name via the backend-event
-  // bridge (wdosbox-x.js: "wc-trigger-event" -> _TriggerEventByName).
-  // No key-event injection needed. Step size = conf cycleup/cycledown.
   cyclesUp(): void {
-    this.ci?.sendBackendEvent({ type: "wc-trigger-event", event: "hand_cycleup" });
+    this.ci?.sendKeyEvent(341, true);
+    this.ci?.sendKeyEvent(301, true);
+    this.ci?.sendKeyEvent(301, false);
+    this.ci?.sendKeyEvent(341, false);
   }
+
   cyclesDown(): void {
-    this.ci?.sendBackendEvent({ type: "wc-trigger-event", event: "hand_cycledown" });
+    this.ci?.sendKeyEvent(341, true);
+    this.ci?.sendKeyEvent(300, true);
+    this.ci?.sendKeyEvent(300, false);
+    this.ci?.sendKeyEvent(341, false);
   }
 
   get commandInterface(): CommandInterface | null { return this.ci; }
 
   async destroy(): Promise<void> {
     this.exiting = true;
-    if (this.rafId !== 0) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = 0;
-    }
     this.cancelLongPress();
     for (const timer of this.clickReleaseTimers) clearTimeout(timer);
     this.clickReleaseTimers.clear();
-    this.pendingBuf = null;
-    window.removeEventListener("keydown", this.onKeyDown);
-    window.removeEventListener("keyup", this.onKeyUp);
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
@@ -751,12 +759,10 @@ export class DosEmulator {
       this.audioNode = null;
     }
     if (this.audioCtx) {
+      this.audioCtx.removeEventListener("statechange", this.resumeAudioIfNeeded);
       try { await this.audioCtx.close(); } catch { /* ignore */ }
       this.audioCtx = null;
     }
-    const gl = this.gl;
-    if (this.tex) { gl.deleteTexture(this.tex); this.tex = null; }
-    if (this.quadBuf) { gl.deleteBuffer(this.quadBuf); this.quadBuf = null; }
-    if (this.program) { gl.deleteProgram(this.program); this.program = null; }
+    this.module = null;
   }
 }

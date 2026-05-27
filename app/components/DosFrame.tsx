@@ -9,6 +9,7 @@ export type { DosEmulator };
 
 export interface DosFrameProps {
   bundleUrl: string;
+  configUrl: string;
   onReady: (ci: CommandInterface) => void;
   onError?: (err: unknown) => void;
   /** Called when DosEmulator instance is available (and again with null on unmount). */
@@ -22,9 +23,9 @@ export interface DosFrameProps {
 }
 
 // Progress budget across the four phases. Sums to 1.0.
-//   wait     : waiting for emulators.js (<script src>) to load
-//   download : fetching the .jsdos bundle (real bytes/total)
-//   extract  : wlibzip unpacking inside the WASM bridge
+//   wait     : fetching the runtime config
+//   download : fetching the DOS ZIP bundle (real bytes/total)
+//   extract  : unpacking the DOS files into the WASM filesystem
 //   boot     : extract complete → first frame from the emulator
 // download dominates wall-clock time; extract/boot are near-instant, so we give
 // download the bulk of the budget (5%→99%) and leave extract/boot a thin tail.
@@ -64,7 +65,13 @@ async function streamBundle(
   return out;
 }
 
-export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, height, vAlign = "middle" }: DosFrameProps) {
+async function fetchText(url: string, signal: AbortSignal): Promise<string> {
+  const r = await fetch(url, { signal });
+  if (!r.ok) throw new Error(`config fetch failed: ${r.status}`);
+  return r.text();
+}
+
+export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, width, height, vAlign = "middle" }: DosFrameProps) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const [bootVisible, setBootVisible] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -99,19 +106,14 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
     }
 
     async function boot() {
-      // ── 1. wait for emulators.js to load ───────────────────────────
+      // ── 1. fetch config ────────────────────────────────────────────
       setPhaseProgress("wait", 0);
-      const start = Date.now();
-      while (!window.emulators) {
-        if (Date.now() - start > 30_000) {
-          onError?.(new Error("emulators failed to load within 30s"));
-          return;
-        }
-        // Push a faint pulse so the bar isn't dead while we wait — capped at
-        // 80% of the wait slice so the next phase still feels like a jump.
-        const elapsed = Date.now() - start;
-        setPhaseProgress("wait", Math.min(0.8, elapsed / 2000));
-        await new Promise((r) => setTimeout(r, 100));
+      let config: string;
+      try {
+        config = await fetchText(configUrl, ac.signal);
+      } catch (err) {
+        if (!cancelled) onError?.(err);
+        return;
       }
       setPhaseProgress("wait", 1);
       if (cancelled || !ref.current) return;
@@ -136,6 +138,7 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
       emulator = new DosEmulator({
         canvas: ref.current,
         bundle,
+        config,
         overlay,
         onExtractProgress: (f) => setPhaseProgress("extract", f),
         onReady: (ci) => {
@@ -169,12 +172,13 @@ export function DosFrame({ bundleUrl, onReady, onError, onEmulator, width, heigh
         void emulator.destroy().catch(() => undefined);
       }
     };
-  }, [bundleUrl, onReady, onError, onEmulator]);
+  }, [bundleUrl, configUrl, onReady, onError, onEmulator]);
 
   return (
     <div className={`dos-stage dos-stage--valign-${vAlign}`}>
       <canvas
         ref={ref}
+        tabIndex={0}
         className={fixedSize ? "dos-canvas dos-canvas--fixed" : "dos-canvas dos-canvas--fill"}
         style={fixedSize ? { width: `${width}px`, height: `${height}px` } : undefined}
       />

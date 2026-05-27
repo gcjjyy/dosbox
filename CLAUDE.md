@@ -1,108 +1,97 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working in this repository.
 
-## What this app is
+## What This App Is
 
-Single-tenant web app that boots a real Korean-era MS-DOS environment (`~/dos`, ~231 MB) inside the browser via the js-dos v8 **WASM bridge** (`emulators`). Public read-only access for anyone; one admin password unlocks a Save button that persists changes back to the host filesystem. There is also a per-user save channel that lives entirely in the visitor's localStorage and is layered on top of the server bundle at boot.
-
-Architectural anchors (read these specs before changing core mechanics):
-- `docs/superpowers/specs/2026-05-13-dosbox-design.md` — overall architecture, access matrix, threat model.
-- `docs/superpowers/specs/2026-05-15-custom-dos-emulator-design.md` — why the js-dos React UI was removed and how the bare WASM glue is structured.
-- `docs/superpowers/specs/2026-05-15-user-state-save-design.md` — localStorage overlay save semantics.
+Single-tenant React Router v7 SSR app that boots a Korean-era MS-DOS tree
+(`~/dos`) in the browser using this repo's self-built DOSBox 0.74-3 WebAssembly
+runtime in `public/wasm/`. Public visitors can play read-only. A shared admin
+password unlocks server-side saves back into `DOS_ROOT`, and each browser also
+has a localStorage save overlay.
 
 ## Commands
 
 ```bash
 npm install
-npm run dev         # copy-jsdos + react-router dev (http://localhost:5173)
-npm run build       # copy-jsdos + react-router build
-npm start           # react-router-serve ./build/server/index.js (prod)
-npm run typecheck   # react-router typegen && tsc  ← run after changing routes
-npm run test        # vitest run (node env, app/**/*.test.ts(x), pool: forks)
+npm run dev         # React Router dev server at http://localhost:5173
+npm run build       # production build in build/
+npm start           # react-router-serve ./build/server/index.js
+npm run typecheck   # react-router typegen && tsc
+npm run test        # vitest run
 npm run test:watch
-npx vitest run app/lib/bundle.test.ts        # single test file
-npx vitest run -t "rebuilds bundle"          # single test by name
 ```
 
-`npm run copy-jsdos` syncs `node_modules/js-dos/dist/emulators/*` → `public/js-dos/emulators/`. It is a build prereq baked into `dev` and `build`; `public/js-dos/` is gitignored as a build artifact. After upgrading `js-dos`, rerun it.
+System `zip(1)` is a runtime dependency. `app/lib/bundle.ts` shells out to it
+to produce the large DOS file ZIP served at `/dos.zip`.
 
-**System `zip(1)` is a runtime dependency** of the server. The bundle builder shells out to it because every Node zip library we tried emits streaming-format ZIPs (general-purpose bit 3 set), and js-dos's wlibzip extractor hangs on those for bundles of this size. Keep the `spawn("zip", …)` call in `app/lib/bundle.ts` — do not "modernize" it back to archiver/yazl.
+## Required Env
 
-## Required env
+`.env` is gitignored.
 
-`.env` (gitignored, see `.env.example`):
-- `PORT` (default 5301 in prod via pm2; dev uses Vite's 5173)
-- `DOS_ROOT` — absolute path to the DOS tree. Defaults to `~/dos`.
-- `DOSBOX_ADMIN_PASSWORD` — single shared admin password.
-- `SESSION_SECRET` — **must be ≥32 chars**; storage init throws otherwise.
-- `DOSBOX_CACHE_DIR` (optional) — where `bundle.jsdos` + ETag get cached. Defaults to `~/.cache/dosbox`.
+- `PORT` defaults to 5301 in production.
+- `DOS_ROOT` defaults to `~/dos`.
+- `DOSBOX_ADMIN_PASSWORD` is the shared admin password.
+- `SESSION_SECRET` must be at least 32 characters.
+- `DOSBOX_CACHE_DIR` optionally overrides the bundle cache directory.
 
-## Architecture at a glance
+## Architecture
 
 ```
-Browser ─HTTPS─► nginx (443) ─proxy_pass─► RR v7 server (127.0.0.1:5301) ─fs─► ~/dos
+Browser -> nginx -> React Router server -> DOS_ROOT
 ```
 
-- **Server** is React Router v7 SSR (`ssr: true` in `react-router.config.ts`), Tailwind v4 via Vite plugin, TypeScript strict, Node ≥20.
-- **Client** loads `/js-dos/emulators/emulators.js` from `root.tsx`'s `<head>`. The route `/` then mounts `<DosFrame>`, which fetches `/dos.jsdos` as a streamed `Uint8Array`, instantiates `DosEmulator`, and renders into a WebGL canvas.
-- **No js-dos React UI is used.** We deleted the sidebar/soft-keyboard/splash layers and built the engine glue directly on `window.emulators.dosboxXDirect`. The custom UI lives in `app/components/{Toolbar,ResolutionPicker,VirtualKeyboard,BootScreen,LoginModal}.tsx`.
+- Client downloads `/wasm/dosbox0743.js` and `/wasm/dosbox0743.wasm`.
+- `/dos.zip` streams the DOS files only.
+- `/dosbox.conf` serves runtime configuration separately.
+- `app/lib/dos-emulator.ts` loads `createDosbox()`, extracts `/dos.zip` into
+  MEMFS `/c`, writes `/dosbox.conf`, starts DOSBox, and owns input/audio/save
+  glue.
 
-### Module map
+## Module Map
 
 | Concern | File | Notes |
 |---|---|---|
-| Path safety | `app/lib/dos-paths.ts` | All FS writes go through `resolveSafe()` (rejects empty/control-char segments and any path resolving outside `DOS_ROOT`). |
-| Bundle build | `app/lib/bundle.ts` | Streams `zip(1)` output, ETag = sha256(file list) + on-disk mtime/size (mtime suffix is **load-bearing**: it forces fresh ETags so browsers can't pin a previously-cached broken zip). |
-| Auth | `app/lib/auth.server.ts` | Cookie session via React Router's `createCookieSessionStorage` (not iron-session, despite the older spec). Password compare is constant-time + exact-equal (defeats padding bypass). 10 logins/min/IP in-memory rate limit. |
-| Same-origin guard | `app/lib/origin.ts` | All mutating routes call `assertSameOrigin()`. No CSRF token — SameSite=Lax cookie + origin check is the model. |
-| Server save | `app/routes/api.save.tsx` + `app/lib/apply-changes.ts` | POST body is raw `ci.persist(true)` ZIP. yauzl unpacks, applyChanges does atomic `tmp` + `rename`, then `rebuildBundle()` is called to refresh the cached bundle. |
-| Client save (server) | `app/lib/save.ts` | Posts the raw ZIP as `application/octet-stream`. |
-| User save (localStorage) | `app/lib/user-state.ts` + `app/lib/use-user-state.ts` | Base64-encoded ZIP under `dosbox-user-state`. ~3.5 MB soft cap before localStorage quota errors. |
-| Engine | `app/lib/dos-emulator.ts` | Owns WebGL renderer, Web Audio, physical keyboard, pointer mouse, lifecycle. |
-| Audio worklet | `app/lib/dos-audio-worklet.ts` + `public/dos-audio-processor.js` | TS file is just the `PROCESSOR_NAME` + `WORKLET_URL` constants; the actual processor source lives at the public path so `audioWorklet.addModule()` loads a same-origin static URL (Blob URLs were unreliable on iOS Safari). Don't duplicate the queue/prime-threshold logic — touch one place. |
-| Keymap | `app/lib/dos-keymap.ts` | `KeyboardEvent.code` → **GLFW-style** keycodes (e.g. `A`=65, Enter=257, Space=32, ArrowUp=265). **Not SDL2 scancodes, not USB HID.** Taken from the `KBD_*` table in `node_modules/js-dos/dist/js-dos.js`. The `SC` named export is used by `VirtualKeyboard.tsx`. |
-| Routes | `app/routes.ts` | RR v7 flat routes: `dos.jsdos.tsx` → `/dos.jsdos`, `api.save.tsx` → `/api/save`, etc. Typed route props come from the virtual `./+types/{name}` module generated by `react-router typegen`. |
+| Paths | `app/lib/dos-paths.ts` | `resolveSafe()` guards all writes under `DOS_ROOT`. |
+| Bundle/config | `app/lib/bundle.ts` | Builds `/dos.zip`; exports `DOSBOX_CONF` and config ETag. |
+| Runtime | `app/lib/dos-emulator.ts` | WASM loader, MEMFS extraction, input, mouse, audio, save diff. |
+| Routes | `app/routes.ts` | `/`, `/dos.zip`, `/dosbox.conf`, auth, save API. |
+| Save API | `app/routes/api.save.tsx` | Accepts changed-file ZIPs and applies them safely. |
+| User save | `app/lib/user-state.ts` | Base64 ZIP in localStorage under `dosbox-user-state`. |
+| Audio | `public/dos-audio-processor.js` | Same-origin AudioWorklet module. |
+| Keyboard | `app/lib/dos-keymap.ts` | Stable virtual-key constants used by the on-screen keyboard. |
 
-### Two save channels — do not confuse them
+## Save Semantics
 
-1. **Admin save** (server-wide, persistent): `Toolbar` "관리자 저장" → `ci.persist(true)` → `POST /api/save` → unzip → write into `DOS_ROOT` → `rebuildBundle()`. All subsequent visitors see the change.
-2. **User save** (this browser only): `Toolbar` "내 저장" → `ci.persist(true)` → base64 → `localStorage["dosbox-user-state"]`. On boot, `DosFrame` reads it and passes it as the second entry to `dosboxXDirect([bundle, overlay])`. Multi-entry semantics in emulators **layer later entries over earlier ones** — same-path files in the overlay win.
+`CommandInterface.persist(true)` returns a ZIP containing files changed since
+boot. Admin save posts that ZIP to `/api/save`, which writes into `DOS_ROOT` and
+rebuilds the server bundle. User save stores the same ZIP in localStorage and
+layers it over `/c` at the next boot. Deletions are not represented as a diff;
+the current save model persists changed or created files.
 
-### Boot pipeline (progress bar phases)
+## Input Notes
 
-`BootScreen` shows real percentages across four weighted phases summed in `DosFrame.tsx`:
-1. `wait` (5%) — poll `window.emulators` (script tag with `defer`).
-2. `download` (55%) — stream `/dos.jsdos` and track `Content-Length`. The route sets `Cache-Control: no-cache, must-revalidate, no-transform` — `no-transform` is required to stop Cloudflare from brotli-recompressing the bundle, which strips `Content-Length` and breaks the progress bar.
-3. `extract` (35%) — wlibzip extraction; fractions reported by the WASM bridge's `onExtractProgress`.
-4. `boot` (5%) — `onReady` → first `onFrame`.
-
-### Rendering & audio gotchas
-
-- **WebGL RAF coalescing**: `DosEmulator` stages the latest frame buffer in `pendingBuf` and uploads it on the next `requestAnimationFrame`. Emulator output frequency is decoupled from display vsync — this is what stopped Chrome/Mac compositor flicker. Don't reintroduce per-`onFrame` `gl.drawArrays`.
-- **Audio: pull-based AudioWorklet, not push-scheduling**: `app/lib/dos-emulator.ts` posts raw `Float32Array` chunks via `port.postMessage(chunk, [chunk.buffer])` (transferable). The worklet (`public/dos-audio-processor.js`) owns a ring queue (2048 sample cap, 512 prime threshold ≈ ~43 / ~11 ms @ 48 kHz) and drains it inside `process()` at the audio thread's natural rate. **Steady-state latency is dominated by PRIME_THRESHOLD** — once primed the queue length oscillates around its initial value, so the prime threshold effectively *is* the audible delay. Upstream js-dos uses 6144/2048 (~128 / ~43 ms) to match its 2048-sample ScriptProcessor quantum; we run a 128-sample AudioWorklet quantum (2.67 ms) so 512 still leaves 4× headroom for postMessage jitter. **Do not** revive the old `createBufferSource + start(t)` push-scheduling pattern with a `MAX_LEAD` cap — that worked on desktop only because of low main-thread jitter and silently dropped nearly all chunks on mobile.
-- **iOS Web Audio unlock**: Construct `AudioContext` with **only the `{sampleRate: n}` option** (n = `ci.soundFrequency()`). Adding `latencyHint: "interactive"`, silent-buffer "unlock dances", or `await`ing `resume()` all caused iOS Safari to leave the context permanently `state === "suspended"` even from inside a gesture handler. The current `setupAudio()` does the minimum that works: gesture-deferred construction, fire-and-forget `resume()`, then poll `ctx.state` until "running" via `waitForRunning()`. `pushAudio` carries a `resampleRatio = ctx.sampleRate / sourceRate` fallback so if iOS ever does coerce the rate, we resample on the main thread (linear interp) before posting to the worklet.
-- Sampling is `gl.LINEAR` + CSS `image-rendering: auto` to smooth non-integer upscales — notably 720x400 text mode into the 640x480-locked viewport, where NEAREST broke glyph stems. Switching back to NEAREST/pixelated for "crisper" 320x200 graphics trades that off; leave it on LINEAR unless that call is being revisited.
-
-### Conventions worth knowing
-
-- `~/*` import alias → `./app/*` (tsconfig `paths`).
-- `*.server.ts` suffix marks server-only modules (e.g. `auth.server.ts`). Avoid importing these from anything in `app/components/` or other client-reachable files.
-- React Router type imports come from the **virtual** `./+types/<route>` path — they only exist after `react-router typegen` runs. Run `npm run typecheck` after editing `app/routes.ts`.
-- `app/.server/` and `app/.client/` are RR convention dirs (included by tsconfig); we don't use them yet but they exist as escape hatches if a module must be one-sided.
-- Errors flow through `app/lib/errors.ts`: typed classes (`Unauthorized`, `InvalidPayload`, `PayloadTooLarge`, `RateLimited`, `PathEscapeError`) → `toErrorResponse(err)` maps to JSON with the right HTTP status. Throw these from actions; don't hand-roll `new Response(…, { status: 400 })`.
+`DOSBOX_CONF` sets `[sdl] usescancodes=false` because the browser SDL layer does
+not provide native scancodes compatible with DOSBox 0.74's default mapper path.
+Mouse lock is disabled (`autolock=false`) so absolute canvas coordinates are
+forwarded consistently in browser mode.
 
 ## Deployment
 
-- **pm2** via `ecosystem.config.cjs`: app name `dosbox`, runs `react-router-serve build/server/index.js` from `/home/gcjjyy/dosbox`, reads `.env` at startup, restarts at 512 MB.
-- **nginx** config in `nginx/dosbox.gcjjyy.dev.conf` proxies to `127.0.0.1:5301`. `client_max_body_size 256m` accommodates large save uploads.
-- Behind Cloudflare — see the `no-transform` note above before changing bundle response headers.
+Production runs with pm2 using `ecosystem.config.cjs`, app name `dosbox`, and
+nginx proxy config in `nginx/dosbox.gcjjyy.dev.conf`. Standard deploy on
+`pcnhost`:
 
-## Git hooks
+```bash
+cd ~/dosbox
+git fetch origin
+git reset --hard origin/main
+npm install
+npm run build
+pm2 restart dosbox
+```
 
-`core.hooksPath` is wired to `.githooks` at the **repo-local** level (`git config --local core.hooksPath .githooks`), which overrides whatever global hooksPath the developer has set. The two installed hooks:
+## Git Hooks
 
-- `.githooks/pre-commit` auto-bumps `package.json`'s patch version on every commit (skips during rebase / merge / cherry-pick, and skips when the commit already touches the `version` field). **Do not bump the patch version manually** — the hook will detect your manual bump and skip its own.
-- `.githooks/post-commit` is a shim that re-invokes `~/.claude/git-hooks/post-commit` (the QuickBASIC 4.5 auto-logger) when present. The local hooksPath would otherwise hide it.
-
-If you cloned fresh and the hooks aren't firing, re-run `git config --local core.hooksPath .githooks` once.
+`core.hooksPath` is repo-local `.githooks`. The pre-commit hook can bump patch
+versions automatically unless the commit already changes the `version` field.

@@ -21,10 +21,17 @@ function runCmd(cmd: string, args: string[], cwd: string): Promise<void> {
   });
 }
 
+const BUNDLE_FORMAT_VERSION = "dos-files-v2";
+
 // Mirrors the native DOSBox 0.74-3 defaults that these games are known to run on
 // (~/Library/Preferences/"DOSBox 0.74-3-3 Preferences"). [sdl]/[render] are
-// intentionally omitted — the web client supplies its own WebGL renderer.
+// intentionally omitted because the browser canvas/audio pipeline owns them.
 export const DOSBOX_CONF = [
+  "[sdl]",
+  "autolock=false",
+  "sensitivity=100",
+  "usescancodes=false",
+  "",
   "[dosbox]",
   "machine=svga_s3",
   "memsize=16",
@@ -90,14 +97,14 @@ export const DOSBOX_CONF = [
   "xms=true",
   "ems=true",
   "umb=true",
-  "keyboardlayout=auto",
+  "keyboardlayout=none",
   "",
   "[ipx]",
   "ipx=false",
   "",
   "[autoexec]",
   "@ECHO OFF",
-  "mount c .",
+  "mount c /c",
   "c:",
   "IF EXIST AUTOEXEC.BAT CALL AUTOEXEC.BAT",
   "",
@@ -108,13 +115,9 @@ function cacheDir(): string {
     ? path.resolve(process.env.DOSBOX_CACHE_DIR)
     : path.join(os.homedir(), ".cache", "dosbox");
 }
-function bundlePath(): string { return path.join(cacheDir(), "bundle.jsdos"); }
+function bundlePath(): string { return path.join(cacheDir(), "bundle.zip"); }
 function etagPath(): string { return path.join(cacheDir(), "bundle.etag"); }
-function confHashPath(): string { return path.join(cacheDir(), "bundle.conf.sha256"); }
-
-function confHash(): string {
-  return createHash("sha256").update(DOSBOX_CONF).digest("hex");
-}
+function formatPath(): string { return path.join(cacheDir(), "bundle.format"); }
 
 interface WalkEntry { rel: string; abs: string; size: number; mtime: number; }
 
@@ -145,10 +148,14 @@ async function walkFiles(root: string): Promise<WalkEntry[]> {
 
 function etagFromFiles(files: WalkEntry[]): string {
   const h = createHash("sha256");
-  h.update(DOSBOX_CONF);
+  h.update(BUNDLE_FORMAT_VERSION);
   h.update("\n");
   for (const f of files) h.update(`${f.rel}:${f.size}:${f.mtime}\n`);
   return `"${h.digest("hex").slice(0, 32)}"`;
+}
+
+export function getDosboxConfEtag(): string {
+  return `"${createHash("sha256").update(DOSBOX_CONF).digest("hex").slice(0, 32)}"`;
 }
 
 let inFlight: Promise<string> | null = null;
@@ -160,28 +167,11 @@ export async function rebuildBundle(): Promise<string> {
     await fs.mkdir(dir, { recursive: true });
     const files = await walkFiles(DOS_ROOT);
     const etag = etagFromFiles(files);
-    const tmpZip = path.join(dir, `bundle.jsdos.${process.pid}-${Date.now()}.tmp`);
+    const tmpZip = path.join(dir, `bundle.zip.${process.pid}-${Date.now()}.tmp`);
 
-    // Use the system `zip` binary. Node libraries we tried (archiver, yazl)
-    // all emit streaming-format ZIPs (general-purpose bit 3 set, sizes/CRCs
-    // in trailing data descriptors). js-dos's wlibzip extractor hangs on that
-    // format with larger bundles, so ci-ready never fires. system `zip` writes
-    // a traditional layout (sizes/CRCs in the local header) which wlibzip
-    // handles cleanly.
-    const staging = await fs.mkdtemp(path.join(os.tmpdir(), "dosbox-stage-"));
-    try {
-      await fs.mkdir(path.join(staging, ".jsdos"), { recursive: true });
-      await fs.writeFile(path.join(staging, ".jsdos", "dosbox.conf"), DOSBOX_CONF);
-      // 1) stage .jsdos/ into the tmp zip. Default zip(1) options — keep UT/ux
-      // extra fields. (-X strips them and we saw extraction hang on extra-field-
-      // less archives, though that may have been a coincidence; either way the
-      // default tracks what the working baseline used.)
-      await runCmd("zip", ["-r", "-q", tmpZip, ".jsdos"], staging);
-      // 2) append ~/dos contents to the same zip
-      await runCmd("zip", ["-r", "-q", tmpZip, ".", "-x", ".jsdos/*"], DOS_ROOT);
-    } finally {
-      await fs.rm(staging, { recursive: true, force: true });
-    }
+    // Use the system `zip` binary so entries have stable local headers. The
+    // web runtime now extracts this archive itself; config is served separately.
+    await runCmd("zip", ["-r", "-q", tmpZip, ".", "-x", ".*", "*/.*"], DOS_ROOT);
 
     // Move the new zip into place atomically.
     await fs.rename(tmpZip, bundlePath());
@@ -194,7 +184,7 @@ export async function rebuildBundle(): Promise<string> {
     const zipStat = await fs.stat(bundlePath());
     const realEtag = `"${etag.slice(1, -1)}-${zipStat.mtimeMs.toString(36)}-${zipStat.size}"`;
     await fs.writeFile(etagPath(), realEtag);
-    await fs.writeFile(confHashPath(), confHash());
+    await fs.writeFile(formatPath(), BUNDLE_FORMAT_VERSION);
     return realEtag;
   })();
   try { return await inFlight; } finally { inFlight = null; }
@@ -203,8 +193,8 @@ export async function rebuildBundle(): Promise<string> {
 async function ensureBundle(): Promise<string> {
   try {
     const etag = (await fs.readFile(etagPath(), "utf8")).trim();
-    const cachedConfHash = (await fs.readFile(confHashPath(), "utf8")).trim();
-    if (cachedConfHash !== confHash()) return rebuildBundle();
+    const cachedFormat = (await fs.readFile(formatPath(), "utf8")).trim();
+    if (cachedFormat !== BUNDLE_FORMAT_VERSION) return rebuildBundle();
     await fs.access(bundlePath());
     return etag;
   } catch {
@@ -226,7 +216,7 @@ export interface BundleStream {
   size: number;
 }
 
-export async function streamJsdosBundle(): Promise<BundleStream> {
+export async function streamDosBundle(): Promise<BundleStream> {
   const etag = await ensureBundle();
   const st = await fs.stat(bundlePath());
   const body = Readable.toWeb(createReadStream(bundlePath())) as unknown as ReadableStream<Uint8Array>;
