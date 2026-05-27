@@ -476,9 +476,14 @@ export class DosEmulator {
   private handleAudio(module: DosboxModule, ptr: number, samples: number, rate: number): void {
     if (rate > 0) this.audioSourceRate = rate;
     const start = ptr >> 2;
-    const copy = new Float32Array(module.HEAPF32.subarray(start, start + samples));
-    this.events.emitSound(copy);
-    this.pushAudio(copy);
+    const stereo = module.HEAPF32.subarray(start, start + samples);
+    const frames = Math.floor(samples / 2);
+    const mono = new Float32Array(frames);
+    for (let i = 0, j = 0; i < frames; i++, j += 2) {
+      mono[i] = (stereo[j] + stereo[j + 1]) * 0.5;
+    }
+    this.events.emitSound(mono);
+    this.pushAudio(mono);
   }
 
   private setupAudioUnlock(): void {
