@@ -233,27 +233,14 @@ export default function Index({ loaderData }: Route.ComponentProps) {
           </div>
         )}
       </main>
-      <div className="canvas-compositor-guard" aria-hidden="true" />
-      {/* Always mount; hidden state uses opacity 0.01 (NOT 0) + inert.
-          Kept mounted even when visually hidden so the page remains a normal
-          composited document instead of allowing the DOS canvas to become a
-          single-plane presentation surface. 0.01 opacity is intentional:
-          opacity: 0 can be skipped by the compositor entirely. `inert` blocks
-          pointer and focus events while hidden. */}
-      <div
-        inert={!vkbVisible}
-        style={{
-          opacity: vkbVisible ? 1 : 0.01,
-          pointerEvents: vkbVisible ? "auto" : "none",
-        }}
-      >
+      {vkbVisible && (
         <VirtualKeyboard
           onKeyDown={onVkbKeyDown}
           onKeyUp={onVkbKeyUp}
           onHide={() => { if (vkbVisible) toggleVkb(); }}
           bgOpacity={options.keyboardOpacity}
         />
-      </div>
+      )}
       {showLogin && (
         <LoginModal
           onClose={() => setShowLogin(false)}

@@ -301,13 +301,6 @@ html { color-scheme: dark; }
     0 0 0 1px var(--color-navy-line),
     0 24px 60px -20px rgba(0, 0, 0, 0.65);
 }
-.canvas-compositor-guard {
-  position: fixed;
-  inset: 0;
-  z-index: 35;
-  pointer-events: none;
-  background: rgba(0, 0, 0, 0.001);
-}
 .audio-unlock {
   position: absolute;
   top: 16px;
