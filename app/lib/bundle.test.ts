@@ -56,8 +56,10 @@ describe("bundle", () => {
     const { rebuildBundle } = await import("./bundle");
     const etag = await rebuildBundle();
     const bundleStat = await fs.stat(path.join(CACHE_TMP, "bundle.jsdos"));
+    const confHashStat = await fs.stat(path.join(CACHE_TMP, "bundle.conf.sha256"));
     const onDiskEtag = (await fs.readFile(path.join(CACHE_TMP, "bundle.etag"), "utf8")).trim();
     expect(bundleStat.size).toBeGreaterThan(0);
+    expect(confHashStat.size).toBe(64);
     expect(onDiskEtag).toBe(etag);
     expect(etag).toMatch(/^"[\w.-]+"$/);
   });
@@ -86,8 +88,14 @@ describe("bundle", () => {
 
   it("pins cycles to the default with an absolute step", async () => {
     const { DOSBOX_CONF } = await import("./bundle");
+    expect(DOSBOX_CONF).toContain("core=auto");
+    expect(DOSBOX_CONF).toContain("cputype=auto");
     expect(DOSBOX_CONF).toContain("cycles=fixed 20000");
     expect(DOSBOX_CONF).toContain("cycleup=1000");
     expect(DOSBOX_CONF).toContain("cycledown=1000");
+    expect(DOSBOX_CONF).toContain("[sblaster]");
+    expect(DOSBOX_CONF).toContain("sbtype=sb16");
+    expect(DOSBOX_CONF).toContain("[speaker]");
+    expect(DOSBOX_CONF).toContain("disney=true");
   });
 });

@@ -30,23 +30,70 @@ export const DOSBOX_CONF = [
   "memsize=16",
   "",
   "[cpu]",
-  // core/cputype intentionally left at DOSBox-X defaults (core=auto,
-  // cputype=auto). We used to pin cputype=486_prefetch, but the WASM build's
+  // Keep core/cputype at the native DOSBox 0.74 auto/auto baseline. We used to
+  // pin cputype=486_prefetch, but the WASM build's
   // own help notes "prefetch queue emulation requires the normal core" while
   // core=auto selects the dynamic core for protected-mode code — that mismatch
   // caused intermittent in-game crashes (e.g. 용의기사2/FD2) under the web
   // emulator that never happened in native DOSBox 0.74-3. cycleup/cycledown are
   // absolute (>=100) so one toolbar click is exactly +/-CYCLES_STEP, matching
   // the client's tracker.
+  "core=auto",
+  "cputype=auto",
   `cycles=fixed ${DEFAULT_CYCLES}`,
   `cycleup=${CYCLES_STEP}`,
   `cycledown=${CYCLES_STEP}`,
+  "",
+  "[mixer]",
+  "nosound=false",
+  "rate=44100",
+  "blocksize=1024",
+  "prebuffer=25",
+  "",
+  "[midi]",
+  "mpu401=intelligent",
+  "mididevice=default",
+  "midiconfig=",
+  "",
+  "[sblaster]",
+  "sbtype=sb16",
+  "sbbase=220",
+  "irq=7",
+  "dma=1",
+  "hdma=5",
+  "sbmixer=true",
+  "oplmode=auto",
+  "oplemu=default",
+  "oplrate=44100",
+  "",
+  "[speaker]",
+  "pcspeaker=true",
+  "pcrate=44100",
+  "tandy=auto",
+  "tandyrate=44100",
+  "disney=true",
+  "",
+  "[joystick]",
+  "joysticktype=auto",
+  "timed=true",
+  "autofire=false",
+  "swap34=false",
+  "buttonwrap=false",
+  "",
+  "[serial]",
+  "serial1=dummy",
+  "serial2=dummy",
+  "serial3=disabled",
+  "serial4=disabled",
   "",
   "[dos]",
   "xms=true",
   "ems=true",
   "umb=true",
   "keyboardlayout=auto",
+  "",
+  "[ipx]",
+  "ipx=false",
   "",
   "[autoexec]",
   "@ECHO OFF",
@@ -63,6 +110,11 @@ function cacheDir(): string {
 }
 function bundlePath(): string { return path.join(cacheDir(), "bundle.jsdos"); }
 function etagPath(): string { return path.join(cacheDir(), "bundle.etag"); }
+function confHashPath(): string { return path.join(cacheDir(), "bundle.conf.sha256"); }
+
+function confHash(): string {
+  return createHash("sha256").update(DOSBOX_CONF).digest("hex");
+}
 
 interface WalkEntry { rel: string; abs: string; size: number; mtime: number; }
 
@@ -142,6 +194,7 @@ export async function rebuildBundle(): Promise<string> {
     const zipStat = await fs.stat(bundlePath());
     const realEtag = `"${etag.slice(1, -1)}-${zipStat.mtimeMs.toString(36)}-${zipStat.size}"`;
     await fs.writeFile(etagPath(), realEtag);
+    await fs.writeFile(confHashPath(), confHash());
     return realEtag;
   })();
   try { return await inFlight; } finally { inFlight = null; }
@@ -150,6 +203,8 @@ export async function rebuildBundle(): Promise<string> {
 async function ensureBundle(): Promise<string> {
   try {
     const etag = (await fs.readFile(etagPath(), "utf8")).trim();
+    const cachedConfHash = (await fs.readFile(confHashPath(), "utf8")).trim();
+    if (cachedConfHash !== confHash()) return rebuildBundle();
     await fs.access(bundlePath());
     return etag;
   } catch {
