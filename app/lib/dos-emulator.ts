@@ -57,6 +57,7 @@ interface DosboxModuleOptions {
   canvas: HTMLCanvasElement;
   noInitialRun: boolean;
   noExitRuntime: boolean;
+  SDL_numSimultaneouslyQueuedBuffers?: number;
   locateFile: (path: string) => string;
   print?: (text: string) => void;
   printErr?: (text: string) => void;
@@ -322,6 +323,7 @@ export class DosEmulator {
       canvas: this.canvas,
       noInitialRun: true,
       noExitRuntime: true,
+      SDL_numSimultaneouslyQueuedBuffers: 2,
       locateFile: (file) => file.endsWith(".wasm") ? DOSBOX_WASM_URL : `/wasm/${file}`,
       print: (text) => console.log("[dosbox]", text),
       printErr: (text) => console.warn("[dosbox]", text),

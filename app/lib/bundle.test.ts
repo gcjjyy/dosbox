@@ -98,6 +98,9 @@ describe("bundle", () => {
     expect(DOSBOX_CONF).toContain("mount c /c");
     expect(DOSBOX_CONF).toContain("cycleup=1000");
     expect(DOSBOX_CONF).toContain("cycledown=1000");
+    expect(DOSBOX_CONF).toContain("[mixer]");
+    expect(DOSBOX_CONF).toContain("blocksize=512");
+    expect(DOSBOX_CONF).toContain("prebuffer=10");
     expect(DOSBOX_CONF).toContain("[sblaster]");
     expect(DOSBOX_CONF).toContain("sbtype=sb16");
     expect(DOSBOX_CONF).toContain("[speaker]");

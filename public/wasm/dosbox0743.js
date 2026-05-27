@@ -3177,7 +3177,7 @@ function js_on_audio(samples,n_samples,sample_rate) { if (Module["onAudio"]) Mod
         // Duration of a single queued buffer in seconds.
         SDL.audio.bufferDurationSecs = SDL.audio.bufferSize / SDL.audio.bytesPerSample / SDL.audio.channels / SDL.audio.freq;
         // Audio samples are played with a constant delay of this many seconds to account for browser and jitter.
-        SDL.audio.bufferingDelay = 50 / 1000;
+        SDL.audio.bufferingDelay = 10 / 1000;
         SDL.audio.buffer = _malloc(SDL.audio.bufferSize);
   
         // To account for jittering in frametimes, always have multiple audio
