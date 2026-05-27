@@ -220,7 +220,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
               disabled={audioUnlocking}
             >
               <Volume2 size={18} strokeWidth={1.8} aria-hidden="true" />
-              <span>{audioUnlocking ? "켜는 중" : "소리 켜기"}</span>
+              <span>{audioUnlocking ? "음소거 해제 중" : "탭하여 음소거 해제"}</span>
             </button>
           </div>
         )}
