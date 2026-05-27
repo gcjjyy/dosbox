@@ -94,7 +94,7 @@ describe("bundle", () => {
     expect(DOSBOX_CONF).toContain("usescancodes=false");
     expect(DOSBOX_CONF).toContain("core=auto");
     expect(DOSBOX_CONF).toContain("cputype=auto");
-    expect(DOSBOX_CONF).toContain("cycles=fixed 80000");
+    expect(DOSBOX_CONF).toContain("cycles=fixed 20000");
     expect(DOSBOX_CONF).toContain("mount c /c");
     expect(DOSBOX_CONF).toContain("cycleup=1000");
     expect(DOSBOX_CONF).toContain("cycledown=1000");

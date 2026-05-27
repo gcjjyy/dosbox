@@ -3375,6 +3375,12 @@ function js_on_audio(samples,n_samples,sample_rate) { if (Module["onAudio"]) Mod
             if (sizeSamplesPerChannel != SDL.audio.samples) {
               throw 'Received mismatching audio buffer size!';
             }
+            if (Module['onAudio']) {
+              var curtime = SDL.audioContext['currentTime'];
+              var playtime = Math.max(curtime + SDL.audio.bufferingDelay, SDL.audio.nextPlayTime);
+              SDL.audio.nextPlayTime = playtime + SDL.audio.bufferDurationSecs;
+              return;
+            }
             // Allocate new sound buffer to be played.
             var source = SDL.audioContext['createBufferSource']();
             var soundBuffer = SDL.audioContext['createBuffer'](SDL.audio.channels,sizeSamplesPerChannel,SDL.audio.freq);

@@ -12,9 +12,9 @@ describe("options", () => {
     expect(parseOptions("123")).toEqual(DEFAULT_OPTIONS);
   });
 
-  it("defaults: cycles 80000, valign middle, opacity 1, resolution 640x480", () => {
+  it("defaults: cycles 20000, valign middle, opacity 1, resolution 640x480", () => {
     expect(DEFAULT_OPTIONS).toEqual({
-      cycles: 80000,
+      cycles: 20000,
       resolutionId: "640x480",
       canvasVAlign: "middle",
       keyboardOpacity: 1,
@@ -36,10 +36,10 @@ describe("options", () => {
     });
   });
 
-  it("migrates the old 20000 default cycles to the current default", () => {
-    const raw = JSON.stringify({ cycles: 20000, resolutionId: "800x600" });
+  it("migrates the temporary 80000 default cycles back to the current default", () => {
+    const raw = JSON.stringify({ cycles: 80000, resolutionId: "800x600" });
     expect(parseOptions(raw)).toMatchObject({
-      cycles: 80000,
+      cycles: 20000,
       resolutionId: "800x600",
     });
   });

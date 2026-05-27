@@ -2,11 +2,12 @@
 // (bundle.ts) and the client toolbar so the dosbox.conf default and the
 // displayed start value never drift apart.
 //
-// Default 80000 cycles matches the local DOSBox 0.74-3 profile used for
-// compatibility testing. Step is an ABSOLUTE value (>=100, not a percentage)
-// so dosbox and the client compute "1 click = +/-1000" identically.
-export const DEFAULT_CYCLES = 80000;
-export const LEGACY_DEFAULT_CYCLES = 20000;
+// Default 20000 cycles (~486DX2-66 class) is baked into dosbox.conf
+// (`cycles=fixed 20000`) and used as the client display default. Step is an
+// ABSOLUTE value (>=100, not a percentage) so dosbox and the client compute
+// "1 click = +/-1000" identically.
+export const DEFAULT_CYCLES = 20000;
+export const LEGACY_HIGH_CYCLES = 80000;
 export const CYCLES_STEP = 1000;
 export const CYCLES_MIN = 3000;
 export const CYCLES_MAX = 100000;
