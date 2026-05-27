@@ -35,6 +35,7 @@ interface BackendOptions {
 
 interface EmulatorsGlobal {
   pathPrefix: string;
+  dosboxDirect: (init: Uint8Array[], options?: BackendOptions) => Promise<CommandInterface>;
   dosboxXDirect: (init: Uint8Array[], options?: BackendOptions) => Promise<CommandInterface>;
 }
 
@@ -243,7 +244,9 @@ export class DosEmulator {
     const initFs = this.opts.overlay
       ? [this.opts.bundle, this.opts.overlay]
       : [this.opts.bundle];
-    const ci = await emu.dosboxXDirect(initFs, onExtract ? {
+    // Use the classic DOSBox backend. SDI113 runs on native DOSBox 0.74 but
+    // exits under the DOSBox-X WASM backend even with matching conf defaults.
+    const ci = await emu.dosboxDirect(initFs, onExtract ? {
       onExtractProgress: (_idx, _file, extracted, total) => {
         if (total > 0) onExtract(Math.min(1, extracted / total));
       },
