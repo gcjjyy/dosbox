@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { Volume2 } from "lucide-react";
 import type { Route } from "./+types/_index";
 import { getSession } from "../lib/auth.server";
 import { bundleVersionFromEtag, getBundleEtag, getDosboxConfEtag } from "../lib/bundle";
@@ -38,6 +39,8 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const [saving, setSaving] = useState(false);
   const [savingUserState, setSavingUserState] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [audioPromptVisible, setAudioPromptVisible] = useState(false);
+  const [audioUnlocking, setAudioUnlocking] = useState(false);
   const [options, setOption, optionsReady] = useOptions();
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -48,6 +51,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
 
   const onReady = useCallback((ci: CommandInterface) => {
     ciRef.current = ci;
+    setAudioPromptVisible(true);
     // Restore the saved cycles value by replaying cycleup/down from the baked
     // default (the shared bundle can't be re-baked per user). Runs once.
     //
@@ -65,6 +69,23 @@ export default function Index({ loaderData }: Route.ComponentProps) {
 
   const onEmulator = useCallback((emu: DosEmulator | null) => {
     emulatorRef.current = emu;
+    if (!emu) setAudioPromptVisible(false);
+  }, []);
+
+  const onAudioEnable = useCallback(async () => {
+    const emu = emulatorRef.current;
+    if (!emu) return;
+    setAudioUnlocking(true);
+    setStatus(null);
+    try {
+      const ok = await emu.unlockAudio();
+      if (ok) setAudioPromptVisible(false);
+      else setStatus("오디오 준비 중");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAudioUnlocking(false);
+    }
   }, []);
 
   const onVkbKeyDown = useCallback((code: number) => {
@@ -188,6 +209,19 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         {status && (
           <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-black/80 px-3 py-1 text-xs">
             {status}
+          </div>
+        )}
+        {audioPromptVisible && (
+          <div className="audio-unlock">
+            <button
+              type="button"
+              className="audio-unlock__button"
+              onClick={onAudioEnable}
+              disabled={audioUnlocking}
+            >
+              <Volume2 size={18} strokeWidth={1.8} aria-hidden="true" />
+              <span>{audioUnlocking ? "켜는 중" : "소리 켜기"}</span>
+            </button>
           </div>
         )}
       </main>

@@ -418,22 +418,12 @@ export class DosEmulator {
 
   private setupSdlAudioUnlock(): void {
     const unlock = () => {
-      if (this.exiting) return;
-      const ctx = this.module?.SDL?.audioContext;
-      if (!ctx) return;
-      if (ctx.state === "running") {
-        this.removeAudioUnlockListeners();
-        return;
-      }
-      if (ctx.state !== "closed") {
-        void ctx.resume().catch((err) => console.warn("[dos-emulator] SDL audio resume failed:", err));
-      }
+      void this.unlockAudio().catch((err) => console.warn("[dos-emulator] audio unlock failed:", err));
     };
     this.gestureUnlock = unlock;
     window.addEventListener("pointerdown", unlock, true);
     window.addEventListener("mousedown", unlock, true);
     window.addEventListener("touchstart", unlock, true);
-    window.addEventListener("keydown", unlock, true);
     window.addEventListener("click", unlock, true);
 
     const activation = (navigator as Navigator & { userActivation?: { hasBeenActive?: boolean; isActive?: boolean } }).userActivation;
@@ -447,9 +437,18 @@ export class DosEmulator {
     window.removeEventListener("pointerdown", this.gestureUnlock, true);
     window.removeEventListener("mousedown", this.gestureUnlock, true);
     window.removeEventListener("touchstart", this.gestureUnlock, true);
-    window.removeEventListener("keydown", this.gestureUnlock, true);
     window.removeEventListener("click", this.gestureUnlock, true);
     this.gestureUnlock = null;
+  }
+
+  async unlockAudio(): Promise<boolean> {
+    if (this.exiting) return false;
+    this.focusCanvas();
+    const ctx = this.module?.SDL?.audioContext;
+    if (!ctx || ctx.state === "closed") return false;
+    if (ctx.state !== "running") await ctx.resume();
+    if (ctx.state === "running") this.removeAudioUnlockListeners();
+    return ctx.state === "running";
   }
 
   private applyDisplaySize(): void {
