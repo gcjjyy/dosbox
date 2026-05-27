@@ -254,6 +254,8 @@ export interface DosEmulatorOpts {
   canvas: HTMLCanvasElement;
   bundle: Uint8Array;
   config: string;
+  displayWidth?: number | null;
+  displayHeight?: number | null;
   overlay?: Uint8Array | null;
   onReady?: (ci: CommandInterface) => void;
   onFirstFrame?: () => void;
@@ -298,6 +300,7 @@ export class DosEmulator {
     this.opts = opts;
     this.canvas = opts.canvas;
     this.canvas.style.imageRendering = "auto";
+    this.applyDisplaySize();
 
     this.onPointerDown = (e) => this.handlePointer(e, "down");
     this.onPointerMove = (e) => this.handlePointer(e, "move");
@@ -445,6 +448,7 @@ export class DosEmulator {
       this.canvas.height = height;
       this.events.emitFrameSize(width, height);
     }
+    this.applyDisplaySize();
     this.events.emitFrame();
     if (!this.firstFrame) {
       this.firstFrame = true;
@@ -492,7 +496,10 @@ export class DosEmulator {
   }
 
   private removeAudioUnlockListeners(): void {
-    this.removeAudioUnlockListeners();
+    if (!this.gestureUnlock) return;
+    window.removeEventListener("pointerdown", this.gestureUnlock, true);
+    window.removeEventListener("keydown", this.gestureUnlock, true);
+    this.gestureUnlock = null;
   }
 
   private pushAudio(samples: Float32Array): void {
@@ -548,6 +555,21 @@ export class DosEmulator {
     this.audioNode.connect(this.audioCtx.destination);
     void this.audioCtx.resume().catch(() => undefined);
     await waitForRunning(this.audioCtx, 1500);
+    if (this.audioCtx.state !== "running") {
+      throw new Error(`AudioContext stayed ${this.audioCtx.state}`);
+    }
+  }
+
+  private applyDisplaySize(): void {
+    const width = this.opts.displayWidth;
+    const height = this.opts.displayHeight;
+    if (width != null && height != null) {
+      this.canvas.style.setProperty("width", `${width}px`, "important");
+      this.canvas.style.setProperty("height", `${height}px`, "important");
+    } else {
+      this.canvas.style.setProperty("width", "100%", "important");
+      this.canvas.style.setProperty("height", "100%", "important");
+    }
   }
 
   private resumeAudioIfNeeded = (): void => {

@@ -80,6 +80,18 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
   const fixedSize = width != null && height != null;
 
   useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    if (fixedSize) {
+      canvas.style.setProperty("width", `${width}px`, "important");
+      canvas.style.setProperty("height", `${height}px`, "important");
+    } else {
+      canvas.style.setProperty("width", "100%", "important");
+      canvas.style.setProperty("height", "100%", "important");
+    }
+  }, [fixedSize, width, height]);
+
+  useEffect(() => {
     mountedAt.current = Date.now();
     const ac = new AbortController();
     let cancelled = false;
@@ -139,6 +151,8 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
         canvas: ref.current,
         bundle,
         config,
+        displayWidth: width,
+        displayHeight: height,
         overlay,
         onExtractProgress: (f) => setPhaseProgress("extract", f),
         onReady: (ci) => {
