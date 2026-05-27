@@ -736,6 +736,92 @@ function js_on_audio(samples,n_samples,sample_rate) { if (Module["onAudio"]) Mod
   
   var preloadPlugins = Module['preloadPlugins'] || [];
   
+  function createWebGL2DPresenter(targetCanvas, sourceCanvas) {
+      var gl = targetCanvas.getContext('webgl', {
+        alpha: false,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        preserveDrawingBuffer: false,
+        powerPreference: 'low-power',
+      });
+      if (!gl) return null;
+
+      function shader(type, source) {
+        var s = gl.createShader(type);
+        gl.shaderSource(s, source);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+          throw new Error(gl.getShaderInfoLog(s) || 'shader compile failed');
+        }
+        return s;
+      }
+
+      var program = gl.createProgram();
+      gl.attachShader(program, shader(gl.VERTEX_SHADER, [
+        'attribute vec2 aPos;',
+        'attribute vec2 aTex;',
+        'varying vec2 vTex;',
+        'void main() {',
+        '  vTex = aTex;',
+        '  gl_Position = vec4(aPos, 0.0, 1.0);',
+        '}',
+      ].join('\n')));
+      gl.attachShader(program, shader(gl.FRAGMENT_SHADER, [
+        'precision mediump float;',
+        'uniform sampler2D uTex;',
+        'varying vec2 vTex;',
+        'void main() {',
+        '  gl_FragColor = texture2D(uTex, vTex);',
+        '}',
+      ].join('\n')));
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program) || 'program link failed');
+      }
+
+      var buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1, 0, 1,
+         1, -1, 1, 1,
+        -1,  1, 0, 0,
+         1,  1, 1, 0,
+      ]), gl.STATIC_DRAW);
+
+      var texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      var aPos = gl.getAttribLocation(program, 'aPos');
+      var aTex = gl.getAttribLocation(program, 'aTex');
+
+      return {
+        prepare(width, height) {
+          if (sourceCanvas.width !== width) sourceCanvas.width = width;
+          if (sourceCanvas.height !== height) sourceCanvas.height = height;
+        },
+        present() {
+          if (targetCanvas.width === 0 || targetCanvas.height === 0) return;
+          gl.viewport(0, 0, targetCanvas.width, targetCanvas.height);
+          gl.useProgram(program);
+          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+          gl.enableVertexAttribArray(aPos);
+          gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+          gl.enableVertexAttribArray(aTex);
+          gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceCanvas);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        },
+      };
+    }
+  
   var Browser = {
   useWebGL:false,
   isFullscreen:false,
@@ -916,8 +1002,20 @@ function js_on_audio(samples,n_samples,sample_rate) { if (Module["onAudio"]) Mod
               ctx = GL.getContext(contextHandle).GLctx;
             }
           }
+        } else if (setInModule && canvas === Module['canvas'] && Module['webgl2DPresentation']) {
+          var sourceCanvas = document.createElement('canvas');
+          sourceCanvas.width = canvas.width || 1;
+          sourceCanvas.height = canvas.height || 1;
+          try {
+            Module['webgl2DPresenter'] = createWebGL2DPresenter(canvas, sourceCanvas);
+            ctx = Module['webgl2DPresenter'] && sourceCanvas.getContext('2d', Module['canvas2DContextAttributes'] || undefined);
+          } catch (e) {
+            err(`warning: WebGL 2D presentation failed, falling back to 2D canvas: ${e}`);
+            Module['webgl2DPresenter'] = null;
+            ctx = canvas.getContext('2d', Module['canvas2DContextAttributes'] || undefined);
+          }
         } else {
-          ctx = canvas.getContext('2d');
+          ctx = canvas.getContext('2d', Module['canvas2DContextAttributes'] || undefined);
         }
   
         if (!ctx) return null;
@@ -3913,8 +4011,10 @@ function js_on_audio(samples,n_samples,sample_rate) { if (Module["onAudio"]) Mod
           s += width*3;
         }
       }
+      Module['webgl2DPresenter']?.prepare?.(surfData.image.width, surfData.image.height);
       // Copy to canvas
       surfData.ctx.putImageData(surfData.image, 0, 0);
+      if (surfData.usePageCanvas) Module['webgl2DPresenter']?.present?.();
       // Note that we save the image, so future writes are fast. But, memory is not yet released
     };
 

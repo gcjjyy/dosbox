@@ -60,6 +60,8 @@ interface DosboxModuleOptions {
   noInitialRun: boolean;
   noExitRuntime: boolean;
   SDL_numSimultaneouslyQueuedBuffers?: number;
+  webgl2DPresentation?: boolean;
+  canvas2DContextAttributes?: CanvasRenderingContext2DSettings;
   locateFile: (path: string) => string;
   print?: (text: string) => void;
   printErr?: (text: string) => void;
@@ -306,6 +308,12 @@ export class DosEmulator {
       noInitialRun: true,
       noExitRuntime: true,
       SDL_numSimultaneouslyQueuedBuffers: 2,
+      webgl2DPresentation: true,
+      canvas2DContextAttributes: {
+        alpha: false,
+        desynchronized: false,
+        willReadFrequently: true,
+      },
       locateFile: (file) => file.endsWith(".wasm") ? DOSBOX_WASM_URL : `/wasm/${file}`,
       print: (text) => console.log("[dosbox]", text),
       printErr: (text) => console.warn("[dosbox]", text),
@@ -484,6 +492,10 @@ export class DosEmulator {
     sdl?.audio?.queueNewAudioData?.();
     if (ctx.state === "running") this.removeAudioUnlockListeners();
     return running;
+  }
+
+  isAudioRunning(): boolean {
+    return this.module?.SDL?.audioContext?.state === "running";
   }
 
   private applyDisplaySize(): void {

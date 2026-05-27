@@ -45,13 +45,17 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const cyclesAppliedRef = useRef(false);
+  const audioPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resolution = resolutionById(options.resolutionId);
   const [vkbVisible, toggleVkb] = useVirtualKeyboard();
   const [hasUserStateValue, refreshHasUserState] = useUserState();
 
   const onReady = useCallback((ci: CommandInterface) => {
     ciRef.current = ci;
-    setAudioPromptVisible(true);
+    if (audioPromptTimerRef.current) clearTimeout(audioPromptTimerRef.current);
+    audioPromptTimerRef.current = setTimeout(() => {
+      setAudioPromptVisible(!emulatorRef.current?.isAudioRunning());
+    }, 1200);
     // Restore the saved cycles value by replaying cycleup/down from the baked
     // default (the shared bundle can't be re-baked per user). Runs once.
     //
@@ -69,7 +73,13 @@ export default function Index({ loaderData }: Route.ComponentProps) {
 
   const onEmulator = useCallback((emu: DosEmulator | null) => {
     emulatorRef.current = emu;
-    if (!emu) setAudioPromptVisible(false);
+    if (!emu) {
+      if (audioPromptTimerRef.current) {
+        clearTimeout(audioPromptTimerRef.current);
+        audioPromptTimerRef.current = null;
+      }
+      setAudioPromptVisible(false);
+    }
   }, []);
 
   const onAudioEnable = useCallback(async () => {
