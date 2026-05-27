@@ -8,11 +8,12 @@ import {
   type Options,
 } from "./options";
 
-// SSR-safe: starts at defaults, then hydrates from localStorage after mount
-// (mirrors the old use-resolution.ts pattern). setOption updates one field,
-// persists the whole blob, and re-renders.
-export function useOptions(): [Options, <K extends keyof Options>(key: K, value: Options[K]) => void] {
+// SSR-safe: starts at defaults, then hydrates from localStorage after mount.
+// The third return value flips true only after that hydration attempt finishes,
+// so callers can avoid mounting size-sensitive browser-only surfaces too early.
+export function useOptions(): [Options, <K extends keyof Options>(key: K, value: Options[K]) => void, boolean] {
   const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     try {
@@ -21,6 +22,8 @@ export function useOptions(): [Options, <K extends keyof Options>(key: K, value:
       setOptions(parseOptions(raw, legacy));
     } catch {
       /* ignore — keep defaults */
+    } finally {
+      setHydrated(true);
     }
   }, []);
 
@@ -36,5 +39,5 @@ export function useOptions(): [Options, <K extends keyof Options>(key: K, value:
     });
   }, []);
 
-  return [options, setOption];
+  return [options, setOption, hydrated];
 }

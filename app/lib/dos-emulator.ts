@@ -292,6 +292,7 @@ export class DosEmulator {
   private readonly onTouchEnd: (e: TouchEvent) => void;
   private readonly onContextMenu: (e: MouseEvent) => void;
   private gestureUnlock: ((e: Event) => void) | null = null;
+  private audioUnlocking = false;
 
   constructor(opts: DosEmulatorOpts) {
     this.opts = opts;
@@ -461,26 +462,37 @@ export class DosEmulator {
 
   private setupAudioUnlock(): void {
     const setupOnce = async (): Promise<void> => {
-      if (this.gestureUnlock) {
-        window.removeEventListener("pointerdown", this.gestureUnlock, true);
-        window.removeEventListener("keydown", this.gestureUnlock, true);
-        this.gestureUnlock = null;
-      }
+      if (this.audioCtx || this.audioUnlocking || this.exiting) return;
+      this.audioUnlocking = true;
       try {
         await this.setupAudio(this.audioSourceRate || DEFAULT_AUDIO_RATE);
+        this.removeAudioUnlockListeners();
       } catch (err) {
         console.warn("[dos-emulator] audio init failed:", err);
-        if (this.audioCtx) {
-          try { await this.audioCtx.close(); } catch { /* ignore */ }
+        const ctx = this.audioCtx as unknown as AudioContext | null;
+        if (ctx) {
+          ctx.removeEventListener("statechange", this.resumeAudioIfNeeded);
+          try { await ctx.close(); } catch { /* ignore */ }
           this.audioCtx = null;
         }
         this.audioNode = null;
+      } finally {
+        this.audioUnlocking = false;
       }
     };
     const unlock = () => { void setupOnce(); };
     this.gestureUnlock = unlock;
     window.addEventListener("pointerdown", unlock, true);
     window.addEventListener("keydown", unlock, true);
+
+    const activation = (navigator as Navigator & { userActivation?: { hasBeenActive?: boolean; isActive?: boolean } }).userActivation;
+    if (activation?.hasBeenActive || activation?.isActive) {
+      void setupOnce();
+    }
+  }
+
+  private removeAudioUnlockListeners(): void {
+    this.removeAudioUnlockListeners();
   }
 
   private pushAudio(samples: Float32Array): void {

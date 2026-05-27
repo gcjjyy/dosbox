@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Route } from "./+types/_index";
 import { getSession } from "../lib/auth.server";
 import { bundleVersionFromEtag, getBundleEtag, getDosboxConfEtag } from "../lib/bundle";
@@ -38,9 +38,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   const [saving, setSaving] = useState(false);
   const [savingUserState, setSavingUserState] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-  const [options, setOption] = useOptions();
+  const [options, setOption, optionsReady] = useOptions();
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const cyclesAppliedRef = useRef(false);
@@ -53,13 +51,8 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     // Restore the saved cycles value by replaying cycleup/down from the baked
     // default (the shared bundle can't be re-baked per user). Runs once.
     //
-    // Two ordering invariants make optionsRef + emulatorRef reliable here:
-    //  · options are hydrated from localStorage in useOptions' mount useEffect,
-    //    which runs together with the `mounted` effect that gates DosFrame —
-    //    so DosFrame (and thus this onReady) cannot mount before hydration.
-    //  · emulatorRef is set by onEmulator, called synchronously at DosEmulator
-    //    construction; onReady fires only after the async download+extract boot
-    //    chain, so emulatorRef.current is already non-null.
+    // DosFrame mounts only after useOptions has attempted localStorage
+    // hydration, so this sees the user's saved cycles/resolution defaults.
     if (!cyclesAppliedRef.current) {
       cyclesAppliedRef.current = true;
       const { dir, count } = cyclesReplay(optionsRef.current.cycles);
@@ -181,7 +174,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         onSave={checkAndSave}
       />
       <main className="relative">
-        {mounted && (
+        {optionsReady && (
           <DosFrame
             bundleUrl={loaderData.bundleUrl}
             configUrl={loaderData.configUrl}
