@@ -31,6 +31,16 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
+function isDesktopChrome(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return (
+    navigator.vendor === "Google Inc." &&
+    /\bChrome\//.test(ua) &&
+    !/\b(Edg|OPR|Opera|SamsungBrowser|CriOS)\//.test(ua)
+  );
+}
+
 export default function Index({ loaderData }: Route.ComponentProps) {
   const ciRef = useRef<CommandInterface | null>(null);
   const emulatorRef = useRef<DosEmulator | null>(null);
@@ -54,6 +64,10 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     ciRef.current = ci;
     if (audioPromptTimerRef.current) clearTimeout(audioPromptTimerRef.current);
     audioPromptTimerRef.current = setTimeout(() => {
+      if (isDesktopChrome()) {
+        setAudioPromptVisible(false);
+        return;
+      }
       setAudioPromptVisible(!emulatorRef.current?.isAudioRunning());
     }, 1200);
     // Restore the saved cycles value by replaying cycleup/down from the baked
@@ -214,7 +228,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
             width={resolution.width}
             height={resolution.height}
             vAlign={options.canvasVAlign}
-            canvasOverlay={audioPromptVisible ? (
+            canvasOverlay={audioPromptVisible && !isDesktopChrome() ? (
               <button
                 type="button"
                 className="audio-unlock__button"
