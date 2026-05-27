@@ -94,13 +94,13 @@ describe("bundle", () => {
     expect(DOSBOX_CONF).toContain("usescancodes=false");
     expect(DOSBOX_CONF).toContain("core=auto");
     expect(DOSBOX_CONF).toContain("cputype=auto");
-    expect(DOSBOX_CONF).toContain("cycles=fixed 20000");
+    expect(DOSBOX_CONF).toContain("cycles=fixed 80000");
     expect(DOSBOX_CONF).toContain("mount c /c");
     expect(DOSBOX_CONF).toContain("cycleup=1000");
     expect(DOSBOX_CONF).toContain("cycledown=1000");
     expect(DOSBOX_CONF).toContain("[mixer]");
-    expect(DOSBOX_CONF).toContain("blocksize=512");
-    expect(DOSBOX_CONF).toContain("prebuffer=10");
+    expect(DOSBOX_CONF).toContain("blocksize=1024");
+    expect(DOSBOX_CONF).toContain("prebuffer=25");
     expect(DOSBOX_CONF).toContain("[sblaster]");
     expect(DOSBOX_CONF).toContain("sbtype=sb16");
     expect(DOSBOX_CONF).toContain("[speaker]");

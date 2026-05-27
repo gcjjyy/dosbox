@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_CYCLES,
+  LEGACY_DEFAULT_CYCLES,
   CYCLES_STEP,
   CYCLES_MIN,
   CYCLES_MAX,
@@ -9,8 +10,9 @@ import {
 } from "./cpu-cycles";
 
 describe("cpu-cycles", () => {
-  it("exposes 20000 default and absolute step", () => {
-    expect(DEFAULT_CYCLES).toBe(20000);
+  it("exposes 80000 default and absolute step", () => {
+    expect(DEFAULT_CYCLES).toBe(80000);
+    expect(LEGACY_DEFAULT_CYCLES).toBe(20000);
     expect(CYCLES_STEP).toBe(1000);
     expect(CYCLES_MIN).toBe(3000);
     expect(CYCLES_MAX).toBe(100000);
@@ -28,10 +30,9 @@ describe("cpu-cycles", () => {
   });
 
   it("computes boot replay direction + step count vs the default", () => {
-    expect(cyclesReplay(20000)).toEqual({ dir: "up", count: 0 });
-    expect(cyclesReplay(24000)).toEqual({ dir: "up", count: 4 });
-    expect(cyclesReplay(16000)).toEqual({ dir: "down", count: 4 });
-    // clamped target (3000) is 17000 below default → exactly 17 steps
-    expect(cyclesReplay(0)).toEqual({ dir: "down", count: 17 });
+    expect(cyclesReplay(80000)).toEqual({ dir: "up", count: 0 });
+    expect(cyclesReplay(84000)).toEqual({ dir: "up", count: 4 });
+    expect(cyclesReplay(76000)).toEqual({ dir: "down", count: 4 });
+    expect(cyclesReplay(0)).toEqual({ dir: "down", count: 77 });
   });
 });

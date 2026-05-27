@@ -307,7 +307,7 @@ export class DosEmulator {
       canvas: this.canvas,
       noInitialRun: true,
       noExitRuntime: true,
-      SDL_numSimultaneouslyQueuedBuffers: 2,
+      SDL_numSimultaneouslyQueuedBuffers: 3,
       webgl2DPresentation: true,
       canvas2DContextAttributes: {
         alpha: false,

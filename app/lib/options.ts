@@ -5,7 +5,7 @@
 // localStorage. Kept pure so it's unit-testable in the node test env.
 
 import { RESOLUTIONS, DEFAULT_RESOLUTION, type ResolutionId } from "../components/ResolutionPicker";
-import { DEFAULT_CYCLES, clampCycles } from "./cpu-cycles";
+import { DEFAULT_CYCLES, LEGACY_DEFAULT_CYCLES, clampCycles } from "./cpu-cycles";
 
 export type CanvasVAlign = "top" | "middle" | "bottom";
 
@@ -57,7 +57,9 @@ export function parseOptions(raw: string | null, legacyResolution?: string | nul
       : DEFAULT_OPTIONS.resolutionId;
 
   return {
-    cycles: typeof obj.cycles === "number" ? clampCycles(obj.cycles) : DEFAULT_OPTIONS.cycles,
+    cycles: typeof obj.cycles === "number" && obj.cycles !== LEGACY_DEFAULT_CYCLES
+      ? clampCycles(obj.cycles)
+      : DEFAULT_OPTIONS.cycles,
     resolutionId,
     canvasVAlign: isVAlign(obj.canvasVAlign) ? obj.canvasVAlign : DEFAULT_OPTIONS.canvasVAlign,
     keyboardOpacity: obj.keyboardOpacity === undefined ? DEFAULT_OPTIONS.keyboardOpacity : clamp01(obj.keyboardOpacity),
