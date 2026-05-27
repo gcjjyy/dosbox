@@ -80,6 +80,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
     try {
       const ok = await emu.unlockAudio();
       if (ok) setAudioPromptVisible(false);
+      else setStatus("오디오 장치 준비 중");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err));
     } finally {
@@ -203,24 +204,22 @@ export default function Index({ loaderData }: Route.ComponentProps) {
             width={resolution.width}
             height={resolution.height}
             vAlign={options.canvasVAlign}
+            canvasOverlay={audioPromptVisible ? (
+              <button
+                type="button"
+                className="audio-unlock__button"
+                onClick={onAudioEnable}
+                disabled={audioUnlocking}
+              >
+                <Volume2 size={18} strokeWidth={1.8} aria-hidden="true" />
+                <span>{audioUnlocking ? "음소거 해제 중" : "탭하여 음소거 해제"}</span>
+              </button>
+            ) : null}
           />
         )}
         {status && (
           <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-black/80 px-3 py-1 text-xs">
             {status}
-          </div>
-        )}
-        {audioPromptVisible && (
-          <div className="audio-unlock">
-            <button
-              type="button"
-              className="audio-unlock__button"
-              onClick={onAudioEnable}
-              disabled={audioUnlocking}
-            >
-              <Volume2 size={18} strokeWidth={1.8} aria-hidden="true" />
-              <span>{audioUnlocking ? "음소거 해제 중" : "탭하여 음소거 해제"}</span>
-            </button>
           </div>
         )}
       </main>

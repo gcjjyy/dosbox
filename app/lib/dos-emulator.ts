@@ -47,6 +47,9 @@ interface DosboxModule {
   SDL?: {
     audioContext?: AudioContext;
     openAudioContext?: () => void;
+    audio?: {
+      queueNewAudioData?: () => void;
+    };
   };
   ccall: (name: string, returnType: string | null, argTypes: string[], args: unknown[]) => unknown;
   callMain: (args?: string[]) => void;
@@ -73,6 +76,28 @@ declare global {
 }
 
 let dosboxFactoryPromise: Promise<DosboxFactory> | null = null;
+
+function waitForAudioRunning(ctx: AudioContext, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (ctx.state === "running") return resolve(true);
+    const startedAt = Date.now();
+    const done = (ok: boolean) => {
+      ctx.removeEventListener("statechange", onChange);
+      resolve(ok);
+    };
+    const onChange = () => {
+      if (ctx.state === "running") done(true);
+    };
+    const tick = () => {
+      if (ctx.state === "running") return done(true);
+      if (ctx.state === "closed") return done(false);
+      if (Date.now() - startedAt >= timeoutMs) return done(false);
+      setTimeout(tick, 50);
+    };
+    ctx.addEventListener("statechange", onChange);
+    setTimeout(tick, 50);
+  });
+}
 
 function loadDosboxFactory(): Promise<DosboxFactory> {
   if (window.createDosbox) return Promise.resolve(window.createDosbox);
@@ -449,9 +474,16 @@ export class DosEmulator {
     if (!sdl?.audioContext) sdl?.openAudioContext?.();
     const ctx = sdl?.audioContext;
     if (!ctx || ctx.state === "closed") return false;
-    if (ctx.state !== "running") await ctx.resume();
+    if (ctx.state !== "running") {
+      await Promise.race([
+        ctx.resume(),
+        new Promise<void>((resolve) => setTimeout(resolve, 1000)),
+      ]);
+    }
+    const running = await waitForAudioRunning(ctx, 1200);
+    sdl?.audio?.queueNewAudioData?.();
     if (ctx.state === "running") this.removeAudioUnlockListeners();
-    return ctx.state === "running";
+    return running;
   }
 
   private applyDisplaySize(): void {

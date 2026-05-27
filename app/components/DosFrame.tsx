@@ -1,5 +1,5 @@
 // app/components/DosFrame.tsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { DosEmulator, type CommandInterface } from "../lib/dos-emulator";
 import { BootScreen, type BootPhase } from "./BootScreen";
 import { readUserState } from "../lib/user-state";
@@ -20,6 +20,7 @@ export interface DosFrameProps {
   height?: number | null;
   /** Vertical alignment of the canvas within the stage. Default "middle". */
   vAlign?: "top" | "middle" | "bottom";
+  canvasOverlay?: ReactNode;
 }
 
 // Progress budget across the four phases. Sums to 1.0.
@@ -71,13 +72,39 @@ async function fetchText(url: string, signal: AbortSignal): Promise<string> {
   return r.text();
 }
 
-export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, width, height, vAlign = "middle" }: DosFrameProps) {
+export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, width, height, vAlign = "middle", canvasOverlay }: DosFrameProps) {
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLCanvasElement | null>(null);
   const [bootVisible, setBootVisible] = useState(true);
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<BootPhase>("wait");
+  const [overlayPos, setOverlayPos] = useState({ left: 16, top: 16 });
   const mountedAt = useRef<number>(0);
   const fixedSize = width != null && height != null;
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const canvas = ref.current;
+    if (!stage || !canvas) return;
+
+    const update = () => {
+      const stageRect = stage.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      const left = Math.max(0, Math.round(canvasRect.left - stageRect.left + 12));
+      const top = Math.max(0, Math.round(canvasRect.top - stageRect.top + 12));
+      setOverlayPos((prev) => (prev.left === left && prev.top === top ? prev : { left, top }));
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(stage);
+    ro.observe(canvas);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [fixedSize, width, height, vAlign]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -189,13 +216,18 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
   }, [bundleUrl, configUrl, onReady, onError, onEmulator]);
 
   return (
-    <div className={`dos-stage dos-stage--valign-${vAlign}`}>
+    <div ref={stageRef} className={`dos-stage dos-stage--valign-${vAlign}`}>
       <canvas
         ref={ref}
         tabIndex={0}
         className={fixedSize ? "dos-canvas dos-canvas--fixed" : "dos-canvas dos-canvas--fill"}
         style={fixedSize ? { width: `${width}px`, height: `${height}px` } : undefined}
       />
+      {canvasOverlay && (
+        <div className="audio-unlock" style={{ left: `${overlayPos.left}px`, top: `${overlayPos.top}px` }}>
+          {canvasOverlay}
+        </div>
+      )}
       <BootScreen visible={bootVisible} progress={progress} phase={phase} />
     </div>
   );
