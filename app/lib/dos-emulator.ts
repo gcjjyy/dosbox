@@ -131,6 +131,10 @@ function loadDosboxFactory(): Promise<DosboxFactory> {
   return dosboxFactoryPromise;
 }
 
+export function preloadDosboxRuntime(): void {
+  void loadDosboxFactory().catch((err) => console.warn("[dos-emulator] runtime preload failed:", err));
+}
+
 function normalizeZipName(name: string): string | null {
   const rel = name.replace(/\\/g, "/").replace(/^\/+/, "");
   if (!rel || rel.endsWith("/")) return null;

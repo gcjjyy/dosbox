@@ -1,6 +1,6 @@
 // app/components/DosFrame.tsx
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { DosEmulator, type CommandInterface } from "../lib/dos-emulator";
+import { DosEmulator, preloadDosboxRuntime, type CommandInterface } from "../lib/dos-emulator";
 import { BootScreen, type BootPhase } from "./BootScreen";
 import { readUserState } from "../lib/user-state";
 
@@ -156,6 +156,7 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
       }
       setPhaseProgress("wait", 1);
       if (cancelled || !ref.current) return;
+      preloadDosboxRuntime();
 
       // ── 2. download bundle (real bytes via streaming reader) ───────
       let bundle: Uint8Array;
