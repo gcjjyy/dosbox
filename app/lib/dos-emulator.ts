@@ -119,6 +119,10 @@ function loadDosboxFactory(): Promise<DosboxFactory> {
   return dosboxFactoryPromise;
 }
 
+export function preloadDosboxRuntime(): Promise<void> {
+  return loadDosboxFactory().then(() => undefined);
+}
+
 function normalizeZipName(name: string): string | null {
   const rel = name.replace(/\\/g, "/").replace(/^\/+/, "");
   if (!rel || rel.endsWith("/")) return null;
@@ -253,6 +257,7 @@ export interface DosEmulatorOpts {
   onReady?: (ci: CommandInterface) => void;
   onFirstFrame?: () => void;
   onError?: (err: unknown) => void;
+  onRuntimeReady?: () => void;
   onExtractProgress?: (fraction: number) => void;
 }
 
@@ -322,6 +327,7 @@ export class DosEmulator {
     });
     if (this.exiting) return;
     this.module = module;
+    this.opts.onRuntimeReady?.();
 
     this.mountDrive(module, this.opts.bundle, 0, 0.8);
     if (this.opts.overlay) this.mountDrive(module, this.opts.overlay, 0.8, 0.95);

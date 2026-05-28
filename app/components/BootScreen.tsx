@@ -4,15 +4,16 @@ import { version } from "../../package.json";
  * Boot overlay shown until the emulator reports its first frame.
  *
  * Refined minimal · midnight navy. A thin linear progress bar drives a
- * real-percentage readout across four phases (wait → download → extract →
- * boot). Below: wordmark + phase label. No spinner — the bar is the motion.
+ * real-percentage readout across phases (wait → download → runtime → extract
+ * → boot). Below: wordmark + phase label. No spinner — the bar is the motion.
  */
 
-export type BootPhase = "wait" | "download" | "extract" | "boot";
+export type BootPhase = "wait" | "download" | "runtime" | "extract" | "boot";
 
 const PHASE_LABEL: Record<BootPhase, string> = {
   wait: "에뮬레이터 준비 중",
   download: "디스크 이미지 내려받는 중",
+  runtime: "도스박스 런타임 불러오는 중",
   extract: "디스크 압축 푸는 중",
   boot: "도스 부팅 중",
 };
@@ -21,10 +22,12 @@ export function BootScreen({
   visible,
   progress,
   phase,
+  message,
 }: {
   visible: boolean;
   progress: number;
   phase: BootPhase;
+  message?: string | null;
 }) {
   const pct = Math.max(0, Math.min(100, Math.round(progress * 100)));
 
@@ -47,7 +50,7 @@ export function BootScreen({
             <span className="boot-wordmark__name">DOSBOX</span>
             <span className="boot-wordmark__cursor" aria-hidden="true">_</span>
           </p>
-          <p className="boot-status" key={phase}>{PHASE_LABEL[phase]}</p>
+          <p className="boot-status" key={message ?? phase}>{message ?? PHASE_LABEL[phase]}</p>
         </div>
       </div>
 
