@@ -4,7 +4,7 @@
 // generated Emscripten module, mounts the DOS archive into MEMFS, injects a
 // separately served dosbox.conf, and forwards keyboard/mouse/audio events.
 
-import { unzipSync, zipSync } from "fflate";
+import { unzip, zipSync } from "fflate";
 import { version } from "../../package.json";
 import { PROCESSOR_NAME, WORKLET_URL } from "./dos-audio-worklet";
 
@@ -113,6 +113,25 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
       setTimeout(() => reject(new Error(`${label} timeout ${ms}ms`)), ms),
     ),
   ]);
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => setTimeout(resolve, 0));
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
+function unzipArchive(zipBytes: Uint8Array): Promise<Record<string, Uint8Array>> {
+  return new Promise((resolve, reject) => {
+    unzip(zipBytes, (err, entries) => {
+      if (err) reject(err);
+      else resolve(entries ?? {});
+    });
+  });
 }
 
 function resampleInterleaved(input: Float32Array, channels: number, ratio: number): Float32Array {
@@ -373,10 +392,15 @@ export class DosEmulator {
     this.module = module;
     this.opts.onRuntimeReady?.();
 
-    this.mountDrive(module, this.opts.bundle, 0, 0.8);
-    if (this.opts.overlay) this.mountDrive(module, this.opts.overlay, 0.8, 0.95);
+    await this.mountDrive(module, this.opts.bundle, 0, 0.8);
+    if (this.exiting) return;
+    if (this.opts.overlay) await this.mountDrive(module, this.opts.overlay, 0.8, 0.15);
+    if (this.exiting) return;
     module.FS.writeFile("/dosbox.conf", this.opts.config);
-    this.baseline = this.snapshotDrive(module);
+    this.opts.onExtractProgress?.(0.98);
+    await yieldToBrowser();
+    this.baseline = await this.snapshotDriveAsync(module);
+    if (this.exiting) return;
     this.opts.onExtractProgress?.(1);
 
     this.ci = this.createCommandInterface(module);
@@ -423,22 +447,38 @@ export class DosEmulator {
     if (pressed && info.charCode) dispatchKeyboard("keypress", info);
   }
 
-  private mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): void {
+  private async mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): Promise<void> {
     this.ensureDir(module, "/c");
-    const entries = unzipSync(zipBytes);
+    this.opts.onExtractProgress?.(progressBase);
+    await yieldToBrowser();
+    const entries = await unzipArchive(zipBytes);
+    if (this.exiting) return;
+    this.opts.onExtractProgress?.(progressBase + progressSpan * 0.08);
+    await yieldToBrowser();
+
     const files: Array<[string, Uint8Array]> = [];
     for (const [name, data] of Object.entries(entries)) {
       const rel = normalizeZipName(name);
       if (rel) files.push([rel, data]);
     }
     const total = Math.max(1, files.length);
-    files.forEach(([rel, data], idx) => {
+    let lastYield = performance.now();
+    for (let idx = 0; idx < files.length; idx++) {
+      if (this.exiting) return;
+      const [rel, data] = files[idx];
       const dest = `/c/${rel}`;
       const slash = dest.lastIndexOf("/");
       if (slash > 0) this.ensureDir(module, dest.slice(0, slash));
       module.FS.writeFile(dest, data);
-      this.opts.onExtractProgress?.(progressBase + progressSpan * ((idx + 1) / total));
-    });
+      const written = idx + 1;
+      const fraction = 0.08 + 0.9 * (written / total);
+      this.opts.onExtractProgress?.(progressBase + progressSpan * fraction);
+      const now = performance.now();
+      if (written === total || written % 8 === 0 || now - lastYield > 12) {
+        await yieldToBrowser();
+        lastYield = performance.now();
+      }
+    }
   }
 
   private ensureDir(module: DosboxModule, dir: string): void {
@@ -453,9 +493,26 @@ export class DosEmulator {
     }
   }
 
-  private snapshotDrive(module: DosboxModule): Map<string, Uint8Array> {
+  private async snapshotDriveAsync(module: DosboxModule): Promise<Map<string, Uint8Array>> {
     const out = new Map<string, Uint8Array>();
-    for (const [rel, bytes] of this.readDrive(module)) out.set(rel, bytes);
+    let visited = 0;
+    const rec = async (dir: string, relDir: string): Promise<void> => {
+      for (const name of module.FS.readdir(dir)) {
+        if (name === "." || name === "..") continue;
+        const abs = `${dir}/${name}`;
+        const rel = relDir ? `${relDir}/${name}` : name;
+        const st = module.FS.stat(abs);
+        if (module.FS.isDir(st.mode)) {
+          await rec(abs, rel);
+        } else if (module.FS.isFile(st.mode)) {
+          out.set(rel, new Uint8Array(module.FS.readFile(abs)));
+        }
+        visited++;
+        if (visited % 32 === 0) await yieldToBrowser();
+        if (this.exiting) return;
+      }
+    };
+    await rec("/c", "");
     return out;
   }
 
