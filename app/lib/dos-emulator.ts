@@ -5,6 +5,7 @@
 // separately served dosbox.conf, and forwards keyboard/mouse/audio events.
 
 import { unzipSync, zipSync } from "fflate";
+import { PROCESSOR_NAME, WORKLET_URL } from "./dos-audio-worklet";
 
 const DOSBOX_SCRIPT_URL = "/wasm/dosbox0743.js";
 const DOSBOX_WASM_URL = "/wasm/dosbox0743.wasm";
@@ -67,6 +68,7 @@ interface DosboxModuleOptions {
   printErr?: (text: string) => void;
   onAbort?: (reason: unknown) => void;
   onFrame?: (ptr: number, width: number, height: number, stride: number) => void;
+  onAudio?: (ptr: number, samples: number, rate: number) => void;
 }
 
 type DosboxFactory = (opts: DosboxModuleOptions) => Promise<DosboxModule>;
@@ -74,6 +76,7 @@ type DosboxFactory = (opts: DosboxModuleOptions) => Promise<DosboxModule>;
 declare global {
   interface Window {
     createDosbox?: DosboxFactory;
+    webkitAudioContext?: typeof AudioContext;
   }
 }
 
@@ -99,6 +102,37 @@ function waitForAudioRunning(ctx: AudioContext, timeoutMs: number): Promise<bool
     ctx.addEventListener("statechange", onChange);
     setTimeout(tick, 50);
   });
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
+function resampleInterleaved(input: Float32Array, channels: number, ratio: number): Float32Array {
+  if (Math.abs(ratio - 1) < 0.001) return new Float32Array(input);
+  const frames = Math.floor(input.length / channels);
+  const outFrames = Math.max(1, Math.round(frames * ratio));
+  const out = new Float32Array(outFrames * channels);
+  const invRatio = frames / outFrames;
+  const lastFrame = frames - 1;
+  for (let frame = 0; frame < outFrames; frame++) {
+    const srcPos = frame * invRatio;
+    const srcFrame = Math.floor(srcPos);
+    const frac = srcPos - srcFrame;
+    const aFrame = Math.min(srcFrame, lastFrame);
+    const bFrame = Math.min(srcFrame + 1, lastFrame);
+    for (let ch = 0; ch < channels; ch++) {
+      const a = input[aFrame * channels + ch] ?? 0;
+      const b = input[bFrame * channels + ch] ?? a;
+      out[frame * channels + ch] = a + (b - a) * frac;
+    }
+  }
+  return out;
 }
 
 function loadDosboxFactory(): Promise<DosboxFactory> {
@@ -267,6 +301,12 @@ export class DosEmulator {
   private module: DosboxModule | null = null;
   private ci: CommandInterface | null = null;
   private events = new EventHub();
+  private audioCtx: AudioContext | null = null;
+  private audioNode: AudioWorkletNode | null = null;
+  private audioSourceRate = AUDIO_RATE;
+  private audioUnlocking = false;
+  private audioChannels = 2;
+  private resampleRatio = 1;
   private firstFrame = false;
   private exiting = false;
   private baseline = new Map<string, Uint8Array>();
@@ -308,11 +348,12 @@ export class DosEmulator {
 
   private async boot(): Promise<void> {
     const factory = await loadDosboxFactory();
-    const module = await factory({
+    let module!: DosboxModule;
+    module = await factory({
       canvas: this.canvas,
       noInitialRun: true,
       noExitRuntime: true,
-      SDL_numSimultaneouslyQueuedBuffers: 3,
+      SDL_numSimultaneouslyQueuedBuffers: 2,
       webgl2DPresentation: true,
       canvas2DContextAttributes: {
         alpha: false,
@@ -324,6 +365,7 @@ export class DosEmulator {
       printErr: (text) => console.warn("[dosbox]", text),
       onAbort: (reason) => this.opts.onError?.(reason),
       onFrame: (_ptr, width, height) => this.handleFrame(width, height),
+      onAudio: (ptr, samples, rate) => this.handleAudio(module, ptr, samples, rate),
     });
     if (this.exiting) return;
     this.module = module;
@@ -337,7 +379,7 @@ export class DosEmulator {
 
     this.ci = this.createCommandInterface(module);
     this.attachListeners();
-    this.setupSdlAudioUnlock();
+    this.setupAudioUnlock();
     module.callMain(["-conf", "/dosbox.conf"]);
     this.opts.onReady?.(this.ci);
   }
@@ -456,7 +498,18 @@ export class DosEmulator {
     }
   }
 
-  private setupSdlAudioUnlock(): void {
+  private handleAudio(module: DosboxModule, ptr: number, samples: number, rate: number): void {
+    if (rate > 0) this.audioSourceRate = rate;
+    const channels = samples > 1 && samples % 2 === 0 ? 2 : 1;
+    this.audioChannels = channels;
+    const totalSamples = Math.floor(samples / channels) * channels;
+    if (totalSamples <= 0) return;
+    const start = ptr >> 2;
+    const copy = new Float32Array(module.HEAPF32.subarray(start, start + totalSamples));
+    this.pushAudio(copy, channels);
+  }
+
+  private setupAudioUnlock(): void {
     const unlock = () => {
       void this.unlockAudio().catch((err) => console.warn("[dos-emulator] audio unlock failed:", err));
     };
@@ -464,12 +517,11 @@ export class DosEmulator {
     window.addEventListener("pointerdown", unlock, true);
     window.addEventListener("mousedown", unlock, true);
     window.addEventListener("touchstart", unlock, true);
+    window.addEventListener("keydown", unlock, true);
     window.addEventListener("click", unlock, true);
 
     const activation = (navigator as Navigator & { userActivation?: { hasBeenActive?: boolean; isActive?: boolean } }).userActivation;
-    if (activation?.hasBeenActive || activation?.isActive) {
-      unlock();
-    }
+    if (activation?.hasBeenActive || activation?.isActive) unlock();
   }
 
   private removeAudioUnlockListeners(): void {
@@ -477,31 +529,89 @@ export class DosEmulator {
     window.removeEventListener("pointerdown", this.gestureUnlock, true);
     window.removeEventListener("mousedown", this.gestureUnlock, true);
     window.removeEventListener("touchstart", this.gestureUnlock, true);
+    window.removeEventListener("keydown", this.gestureUnlock, true);
     window.removeEventListener("click", this.gestureUnlock, true);
     this.gestureUnlock = null;
+  }
+
+  private pushAudio(samples: Float32Array, channels: number): void {
+    const node = this.audioNode;
+    if (!node || samples.length === 0) return;
+    const toSend = resampleInterleaved(samples, channels, this.resampleRatio);
+    node.port.postMessage({ type: "audio", samples: toSend, channels }, [toSend.buffer]);
+  }
+
+  private async setupAudio(sourceRate: number): Promise<void> {
+    if (this.audioCtx || this.exiting) return;
+    const Ctor: typeof AudioContext | undefined =
+      typeof AudioContext !== "undefined" ? AudioContext : window.webkitAudioContext;
+    if (!Ctor) throw new Error("AudioContext unavailable");
+
+    try {
+      this.audioCtx = new Ctor({ sampleRate: sourceRate });
+    } catch {
+      this.audioCtx = new Ctor();
+    }
+    this.resampleRatio = this.audioCtx.sampleRate / sourceRate;
+    this.audioCtx.addEventListener("statechange", this.resumeAudioIfNeeded);
+    if (!this.audioCtx.audioWorklet || typeof this.audioCtx.audioWorklet.addModule !== "function") {
+      throw new Error("AudioWorklet API missing");
+    }
+
+    void this.audioCtx.resume().catch(() => undefined);
+    await waitForAudioRunning(this.audioCtx, 2000);
+    await withTimeout(this.audioCtx.audioWorklet.addModule(WORKLET_URL), 6000, "addModule");
+    if (this.exiting) return;
+
+    try {
+      this.audioNode = new AudioWorkletNode(this.audioCtx, PROCESSOR_NAME, {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [this.audioChannels],
+      });
+    } catch {
+      this.audioNode = new AudioWorkletNode(this.audioCtx, PROCESSOR_NAME, {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+      });
+    }
+    this.audioNode.connect(this.audioCtx.destination);
+    void this.audioCtx.resume().catch(() => undefined);
+    await waitForAudioRunning(this.audioCtx, 1500);
   }
 
   async unlockAudio(): Promise<boolean> {
     if (this.exiting) return false;
     this.focusCanvas();
+    if (!this.audioCtx) {
+      if (this.audioUnlocking) return false;
+      this.audioUnlocking = true;
+      try {
+        await this.setupAudio(this.audioSourceRate || AUDIO_RATE);
+      } finally {
+        this.audioUnlocking = false;
+      }
+    } else if (this.audioCtx.state !== "running" && this.audioCtx.state !== "closed") {
+      void this.audioCtx.resume().catch(() => undefined);
+    }
+
     const sdl = this.module?.SDL;
     if (!sdl?.audioContext) sdl?.openAudioContext?.();
-    const ctx = sdl?.audioContext;
-    if (!ctx || ctx.state === "closed") return false;
-    if (ctx.state !== "running") {
-      await Promise.race([
-        ctx.resume(),
-        new Promise<void>((resolve) => setTimeout(resolve, 1000)),
-      ]);
+    const sdlCtx = sdl?.audioContext;
+    if (sdlCtx && sdlCtx.state !== "running" && sdlCtx.state !== "closed") {
+      void sdlCtx.resume().catch(() => undefined);
     }
-    const running = await waitForAudioRunning(ctx, 1200);
     sdl?.audio?.queueNewAudioData?.();
+
+    const ctx = this.audioCtx;
+    if (!ctx || ctx.state === "closed") return false;
+    const running = await waitForAudioRunning(ctx, 1200);
     if (ctx.state === "running") this.removeAudioUnlockListeners();
     return running;
   }
 
   isAudioRunning(): boolean {
-    return this.module?.SDL?.audioContext?.state === "running";
+    return this.audioCtx?.state === "running";
   }
 
   private applyDisplaySize(): void {
@@ -517,9 +627,13 @@ export class DosEmulator {
   }
 
   private resumeAudioIfNeeded = (): void => {
-    const ctx = this.module?.SDL?.audioContext ?? null;
+    const ctx = this.audioCtx;
     if (ctx && ctx.state !== "running" && ctx.state !== "closed") {
       void ctx.resume().catch(() => undefined);
+    }
+    const sdlCtx = this.module?.SDL?.audioContext ?? null;
+    if (sdlCtx && sdlCtx.state !== "running" && sdlCtx.state !== "closed") {
+      void sdlCtx.resume().catch(() => undefined);
     }
   };
 
@@ -729,6 +843,16 @@ export class DosEmulator {
       try { await this.ci.exit(); } catch { /* ignore */ }
       this.ci = null;
     }
+    if (this.audioNode) {
+      this.audioNode.port.postMessage({ type: "reset" });
+      this.audioNode.disconnect();
+      this.audioNode = null;
+    }
+    if (this.audioCtx && this.audioCtx.state !== "closed") {
+      this.audioCtx.removeEventListener("statechange", this.resumeAudioIfNeeded);
+      try { await this.audioCtx.close(); } catch { /* ignore */ }
+    }
+    this.audioCtx = null;
     const audioCtx = this.module?.SDL?.audioContext;
     if (audioCtx && audioCtx.state !== "closed") {
       try { await audioCtx.close(); } catch { /* ignore */ }
