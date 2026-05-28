@@ -4,7 +4,7 @@
 // generated Emscripten module, mounts the DOS archive into MEMFS, injects a
 // separately served dosbox.conf, and forwards keyboard/mouse/audio events.
 
-import { unzip, zipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import { version } from "../../package.json";
 import { PROCESSOR_NAME, WORKLET_URL } from "./dos-audio-worklet";
 
@@ -115,25 +115,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
-function yieldToBrowser(): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => setTimeout(resolve, 0));
-    } else {
-      setTimeout(resolve, 0);
-    }
-  });
-}
-
-function unzipArchive(zipBytes: Uint8Array): Promise<Record<string, Uint8Array>> {
-  return new Promise((resolve, reject) => {
-    unzip(zipBytes, (err, entries) => {
-      if (err) reject(err);
-      else resolve(entries ?? {});
-    });
-  });
-}
-
 function resampleInterleaved(input: Float32Array, channels: number, ratio: number): Float32Array {
   if (Math.abs(ratio - 1) < 0.001) return new Float32Array(input);
   const frames = Math.floor(input.length / channels);
@@ -187,16 +168,74 @@ function normalizeZipName(name: string): string | null {
 
 interface BaselineEntry {
   size: number;
-  hash: number;
+  crc: number;
 }
 
-function hashBytes(bytes: Uint8Array): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < bytes.length; i++) {
-    hash ^= bytes[i];
-    hash = Math.imul(hash, 0x01000193) >>> 0;
+let crcTable: Uint32Array | null = null;
+
+function getCrcTable(): Uint32Array {
+  if (crcTable) return crcTable;
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    table[i] = c >>> 0;
   }
-  return hash;
+  crcTable = table;
+  return table;
+}
+
+function crc32(bytes: Uint8Array): number {
+  const table = getCrcTable();
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) {
+    crc = table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function readU16(bytes: Uint8Array, offset: number): number {
+  return bytes[offset] | (bytes[offset + 1] << 8);
+}
+
+function readU32(bytes: Uint8Array, offset: number): number {
+  return (
+    bytes[offset] |
+    (bytes[offset + 1] << 8) |
+    (bytes[offset + 2] << 16) |
+    (bytes[offset + 3] << 24)
+  ) >>> 0;
+}
+
+function zipBaseline(zipBytes: Uint8Array): Map<string, BaselineEntry> {
+  const baseline = new Map<string, BaselineEntry>();
+  const min = Math.max(0, zipBytes.length - 65_558);
+  let eocd = -1;
+  for (let i = zipBytes.length - 22; i >= min; i--) {
+    if (readU32(zipBytes, i) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return baseline;
+
+  const entries = readU16(zipBytes, eocd + 10);
+  let offset = readU32(zipBytes, eocd + 16);
+  const decoder = new TextDecoder();
+  for (let i = 0; i < entries && offset + 46 <= zipBytes.length; i++) {
+    if (readU32(zipBytes, offset) !== 0x02014b50) break;
+    const crc = readU32(zipBytes, offset + 16);
+    const size = readU32(zipBytes, offset + 24);
+    const nameLen = readU16(zipBytes, offset + 28);
+    const extraLen = readU16(zipBytes, offset + 30);
+    const commentLen = readU16(zipBytes, offset + 32);
+    const nameStart = offset + 46;
+    const nameEnd = nameStart + nameLen;
+    const rel = normalizeZipName(decoder.decode(zipBytes.subarray(nameStart, nameEnd)));
+    if (rel) baseline.set(rel, { size, crc });
+    offset = nameEnd + extraLen + commentLen;
+  }
+  return baseline;
 }
 
 function toSDLMouseButton(button: number): number {
@@ -398,9 +437,9 @@ export class DosEmulator {
     this.module = module;
     this.opts.onRuntimeReady?.();
 
-    await this.mountDrive(module, this.opts.bundle, 0, 0.8);
+    this.mountDrive(module, this.opts.bundle, 0, 0.8);
     if (this.exiting) return;
-    if (this.opts.overlay) await this.mountDrive(module, this.opts.overlay, 0.8, 0.15);
+    if (this.opts.overlay) this.mountDrive(module, this.opts.overlay, 0.8, 0.15);
     if (this.exiting) return;
     module.FS.writeFile("/dosbox.conf", this.opts.config);
     this.opts.onExtractProgress?.(1);
@@ -449,14 +488,13 @@ export class DosEmulator {
     if (pressed && info.charCode) dispatchKeyboard("keypress", info);
   }
 
-  private async mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): Promise<void> {
+  private mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): void {
     this.ensureDir(module, "/c");
     this.opts.onExtractProgress?.(progressBase);
-    await yieldToBrowser();
-    const entries = await unzipArchive(zipBytes);
+    const baseline = zipBaseline(zipBytes);
+    const entries = unzipSync(zipBytes);
     if (this.exiting) return;
     this.opts.onExtractProgress?.(progressBase + progressSpan * 0.08);
-    await yieldToBrowser();
 
     const files: Array<[string, Uint8Array]> = [];
     for (const [name, data] of Object.entries(entries)) {
@@ -464,7 +502,6 @@ export class DosEmulator {
       if (rel) files.push([rel, data]);
     }
     const total = Math.max(1, files.length);
-    let lastYield = performance.now();
     for (let idx = 0; idx < files.length; idx++) {
       if (this.exiting) return;
       const [rel, data] = files[idx];
@@ -472,15 +509,10 @@ export class DosEmulator {
       const slash = dest.lastIndexOf("/");
       if (slash > 0) this.ensureDir(module, dest.slice(0, slash));
       module.FS.writeFile(dest, data);
-      this.baseline.set(rel, { size: data.length, hash: hashBytes(data) });
+      this.baseline.set(rel, baseline.get(rel) ?? { size: data.length, crc: crc32(data) });
       const written = idx + 1;
       const fraction = 0.08 + 0.9 * (written / total);
       this.opts.onExtractProgress?.(progressBase + progressSpan * fraction);
-      const now = performance.now();
-      if (written === total || written % 8 === 0 || now - lastYield > 12) {
-        await yieldToBrowser();
-        lastYield = performance.now();
-      }
     }
   }
 
@@ -516,7 +548,7 @@ export class DosEmulator {
     const changed: Record<string, Uint8Array> = {};
     for (const [rel, bytes] of this.readDrive(module)) {
       const base = this.baseline.get(rel);
-      if (!base || base.size !== bytes.length || base.hash !== hashBytes(bytes)) changed[rel] = bytes;
+      if (!base || base.size !== bytes.length || base.crc !== crc32(bytes)) changed[rel] = bytes;
     }
     const names = Object.keys(changed);
     if (names.length === 0) return null;
