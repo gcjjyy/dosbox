@@ -185,12 +185,18 @@ function normalizeZipName(name: string): string | null {
   return rel;
 }
 
-function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
+interface BaselineEntry {
+  size: number;
+  hash: number;
+}
+
+function hashBytes(bytes: Uint8Array): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    hash ^= bytes[i];
+    hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return true;
+  return hash;
 }
 
 function toSDLMouseButton(button: number): number {
@@ -330,7 +336,7 @@ export class DosEmulator {
   private resampleRatio = 1;
   private firstFrame = false;
   private exiting = false;
-  private baseline = new Map<string, Uint8Array>();
+  private baseline = new Map<string, BaselineEntry>();
 
   private leftTouchDown = false;
   private rightTouchActive = false;
@@ -397,10 +403,6 @@ export class DosEmulator {
     if (this.opts.overlay) await this.mountDrive(module, this.opts.overlay, 0.8, 0.15);
     if (this.exiting) return;
     module.FS.writeFile("/dosbox.conf", this.opts.config);
-    this.opts.onExtractProgress?.(0.98);
-    await yieldToBrowser();
-    this.baseline = await this.snapshotDriveAsync(module);
-    if (this.exiting) return;
     this.opts.onExtractProgress?.(1);
 
     this.ci = this.createCommandInterface(module);
@@ -470,6 +472,7 @@ export class DosEmulator {
       const slash = dest.lastIndexOf("/");
       if (slash > 0) this.ensureDir(module, dest.slice(0, slash));
       module.FS.writeFile(dest, data);
+      this.baseline.set(rel, { size: data.length, hash: hashBytes(data) });
       const written = idx + 1;
       const fraction = 0.08 + 0.9 * (written / total);
       this.opts.onExtractProgress?.(progressBase + progressSpan * fraction);
@@ -493,29 +496,6 @@ export class DosEmulator {
     }
   }
 
-  private async snapshotDriveAsync(module: DosboxModule): Promise<Map<string, Uint8Array>> {
-    const out = new Map<string, Uint8Array>();
-    let visited = 0;
-    const rec = async (dir: string, relDir: string): Promise<void> => {
-      for (const name of module.FS.readdir(dir)) {
-        if (name === "." || name === "..") continue;
-        const abs = `${dir}/${name}`;
-        const rel = relDir ? `${relDir}/${name}` : name;
-        const st = module.FS.stat(abs);
-        if (module.FS.isDir(st.mode)) {
-          await rec(abs, rel);
-        } else if (module.FS.isFile(st.mode)) {
-          out.set(rel, new Uint8Array(module.FS.readFile(abs)));
-        }
-        visited++;
-        if (visited % 32 === 0) await yieldToBrowser();
-        if (this.exiting) return;
-      }
-    };
-    await rec("/c", "");
-    return out;
-  }
-
   private readDrive(module: DosboxModule): Array<[string, Uint8Array]> {
     const files: Array<[string, Uint8Array]> = [];
     const rec = (dir: string, relDir: string) => {
@@ -536,7 +516,7 @@ export class DosEmulator {
     const changed: Record<string, Uint8Array> = {};
     for (const [rel, bytes] of this.readDrive(module)) {
       const base = this.baseline.get(rel);
-      if (!base || !arraysEqual(base, bytes)) changed[rel] = bytes;
+      if (!base || base.size !== bytes.length || base.hash !== hashBytes(bytes)) changed[rel] = bytes;
     }
     const names = Object.keys(changed);
     if (names.length === 0) return null;

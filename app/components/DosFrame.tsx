@@ -30,7 +30,7 @@ export interface DosFrameProps {
 //   runtime  : loading/instantiating the DOSBox JS/WASM runtime
 //   extract  : unpacking the DOS files into the WASM filesystem
 //   boot     : extract complete → first frame from the emulator
-const W = { wait: 0.05, download: 0.62, runtime: 0.18, extract: 0.1, boot: 0.05 } as const;
+const W = { wait: 0.02, download: 0.77, runtime: 0.2, extract: 0.005, boot: 0.005 } as const;
 const MAX_USER_STATE_BYTES = 3_500_000;
 
 async function streamBundle(
