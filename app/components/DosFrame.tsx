@@ -1,6 +1,7 @@
 // app/components/DosFrame.tsx
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { DosEmulator, preloadDosboxRuntime, type CommandInterface } from "../lib/dos-emulator";
+import { Unzip, UnzipInflate, type Unzipped } from "fflate";
+import { DosEmulator, preloadDosboxRuntime, type CommandInterface, type DosArchive } from "../lib/dos-emulator";
 import { BootScreen, type BootPhase } from "./BootScreen";
 import { readUserState } from "../lib/user-state";
 
@@ -36,34 +37,85 @@ async function streamBundle(
   url: string,
   signal: AbortSignal,
   onDownload: (fraction: number) => void,
-): Promise<Uint8Array> {
+): Promise<Unzipped> {
   const r = await fetch(url, { signal });
   if (!r.ok) throw new Error(`bundle fetch failed: ${r.status}`);
   const totalHeader = r.headers.get("Content-Length");
   const total = totalHeader ? Number(totalHeader) : 0;
   if (!r.body) {
     // Older browsers / shimmed responses — fall back to a single arrayBuffer.
-    const buf = new Uint8Array(await r.arrayBuffer());
+    const { unzipSync } = await import("fflate");
+    const archive = unzipSync(new Uint8Array(await r.arrayBuffer()));
     onDownload(1);
-    return buf;
+    return archive;
   }
   const reader = r.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const entries: Unzipped = {};
+  const pendingFiles = new Set<string>();
+  let downloadDone = false;
   let received = 0;
+  let settled = false;
+  let resolveArchive!: (archive: Unzipped) => void;
+  let rejectArchive!: (err: unknown) => void;
+  const archiveReady = new Promise<Unzipped>((resolve, reject) => {
+    resolveArchive = resolve;
+    rejectArchive = reject;
+  });
+  const finishIfReady = () => {
+    if (!settled && downloadDone && pendingFiles.size === 0) {
+      settled = true;
+      resolveArchive(entries);
+    }
+  };
+  const fail = (err: unknown) => {
+    if (!settled) {
+      settled = true;
+      rejectArchive(err);
+    }
+  };
+  const unzipper = new Unzip((file) => {
+    if (file.name.endsWith("/")) return;
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    pendingFiles.add(file.name);
+    file.ondata = (err, chunk, final) => {
+      if (err) {
+        fail(err);
+        return;
+      }
+      if (chunk) {
+        chunks.push(chunk);
+        size += chunk.byteLength;
+      }
+      if (final) {
+        const out = new Uint8Array(size);
+        let off = 0;
+        for (const part of chunks) {
+          out.set(part, off);
+          off += part.byteLength;
+        }
+        entries[file.name] = out;
+        pendingFiles.delete(file.name);
+        finishIfReady();
+      }
+    };
+    file.start();
+  });
+  unzipper.register(UnzipInflate);
   for (;;) {
     const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
+    if (done) {
+      downloadDone = true;
+      unzipper.push(new Uint8Array(), true);
+      finishIfReady();
+      break;
+    }
+    unzipper.push(value);
     received += value.length;
     if (total > 0) onDownload(Math.min(1, received / total));
   }
-  // Concat. We allocate a fresh contiguous buffer because the WASM bridge
-  // wants a single Uint8Array.
-  const out = new Uint8Array(received);
-  let off = 0;
-  for (const c of chunks) { out.set(c, off); off += c.length; }
   if (total === 0) onDownload(1);
-  return out;
+  return archiveReady;
 }
 
 async function fetchText(url: string, signal: AbortSignal): Promise<string> {
@@ -159,7 +211,7 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
       preloadDosboxRuntime();
 
       // ── 2. download bundle (real bytes via streaming reader) ───────
-      let bundle: Uint8Array;
+      let bundle: DosArchive;
       try {
         setPhaseProgress("download", 0);
         bundle = await streamBundle(bundleUrl, ac.signal, (f) => setPhaseProgress("download", f));

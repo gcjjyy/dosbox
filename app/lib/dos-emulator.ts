@@ -4,7 +4,7 @@
 // generated Emscripten module, mounts the DOS archive into MEMFS, injects a
 // separately served dosbox.conf, and forwards keyboard/mouse/audio events.
 
-import { unzipSync, zipSync } from "fflate";
+import { unzipSync, zipSync, type Unzipped } from "fflate";
 
 const DOSBOX_SCRIPT_URL = "/wasm/dosbox0743.js";
 const DOSBOX_WASM_URL = "/wasm/dosbox0743.wasm";
@@ -90,6 +90,7 @@ interface DosboxModuleOptions {
 }
 
 type DosboxFactory = (opts: DosboxModuleOptions) => Promise<DosboxModule>;
+export type DosArchive = Uint8Array | Unzipped;
 
 declare global {
   interface Window {
@@ -261,7 +262,7 @@ class EventHub implements CommandInterfaceEvents {
 
 export interface DosEmulatorOpts {
   canvas: HTMLCanvasElement;
-  bundle: Uint8Array;
+  bundle: DosArchive;
   config: string;
   displayWidth?: number | null;
   displayHeight?: number | null;
@@ -389,9 +390,9 @@ export class DosEmulator {
     if (pressed && info.charCode) dispatchKeyboard("keypress", info);
   }
 
-  private mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): void {
+  private mountDrive(module: DosboxModule, archive: DosArchive, progressBase: number, progressSpan: number): void {
     this.ensureDir(module, "/c");
-    const entries = unzipSync(zipBytes);
+    const entries = archive instanceof Uint8Array ? unzipSync(archive) : archive;
     const files: Array<[string, Uint8Array]> = [];
     for (const [name, data] of Object.entries(entries)) {
       const rel = normalizeZipName(name);
