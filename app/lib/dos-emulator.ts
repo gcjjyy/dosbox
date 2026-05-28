@@ -34,6 +34,14 @@ interface DosboxFS {
   mkdir: (path: string) => void;
   mkdirTree?: (path: string) => void;
   writeFile: (path: string, data: Uint8Array | string) => void;
+  createDataFile?: (
+    parent: string,
+    name: string,
+    data: Uint8Array,
+    canRead: boolean,
+    canWrite: boolean,
+    canOwn: boolean,
+  ) => void;
   readFile: (path: string) => Uint8Array;
   readdir: (path: string) => string[];
   stat: (path: string) => DosboxStat;
@@ -394,10 +402,25 @@ export class DosEmulator {
       const dest = `/c/${rel}`;
       const slash = dest.lastIndexOf("/");
       if (slash > 0) this.ensureDir(module, dest.slice(0, slash));
-      module.FS.writeFile(dest, data);
+      this.writeMountedFile(module, dest, data);
       this.baseline.set(rel, this.fileMeta(module.FS.stat(dest), data.byteLength));
       this.opts.onExtractProgress?.(progressBase + progressSpan * ((idx + 1) / total));
     });
+  }
+
+  private writeMountedFile(module: DosboxModule, dest: string, data: Uint8Array): void {
+    const slash = dest.lastIndexOf("/");
+    const parent = slash > 0 ? dest.slice(0, slash) : "/";
+    const name = dest.slice(slash + 1);
+    if (module.FS.createDataFile) {
+      try {
+        module.FS.createDataFile(parent, name, data, true, true, true);
+        return;
+      } catch {
+        // Overlay files may replace an existing base file; writeFile handles that.
+      }
+    }
+    module.FS.writeFile(dest, data);
   }
 
   private ensureDir(module: DosboxModule, dir: string): void {
