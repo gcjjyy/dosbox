@@ -1,6 +1,6 @@
 // app/components/DosFrame.tsx
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { DosEmulator, preloadDosboxRuntime, type CommandInterface } from "../lib/dos-emulator";
+import { DosEmulator, type CommandInterface } from "../lib/dos-emulator";
 import { BootScreen, type BootPhase } from "./BootScreen";
 import { readUserState } from "../lib/user-state";
 
@@ -28,7 +28,9 @@ export interface DosFrameProps {
 //   download : fetching the DOS ZIP bundle (real bytes/total)
 //   extract  : unpacking the DOS files into the WASM filesystem
 //   boot     : extract complete → first frame from the emulator
-const W = { wait: 0.08, download: 0.62, extract: 0.24, boot: 0.06 } as const;
+// download dominates wall-clock time; extract/boot are near-instant, so we give
+// download the bulk of the budget (5%→99%) and leave extract/boot a thin tail.
+const W = { wait: 0.05, download: 0.94, extract: 0.005, boot: 0.005 } as const;
 
 async function streamBundle(
   url: string,
@@ -55,6 +57,8 @@ async function streamBundle(
     received += value.length;
     if (total > 0) onDownload(Math.min(1, received / total));
   }
+  // Concat. We allocate a fresh contiguous buffer because the WASM bridge
+  // wants a single Uint8Array.
   const out = new Uint8Array(received);
   let off = 0;
   for (const c of chunks) { out.set(c, off); off += c.length; }
@@ -152,7 +156,6 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
       }
       setPhaseProgress("wait", 1);
       if (cancelled || !ref.current) return;
-      preloadDosboxRuntime();
 
       // ── 2. download bundle (real bytes via streaming reader) ───────
       let bundle: Uint8Array;
