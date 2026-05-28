@@ -5,10 +5,12 @@
 // separately served dosbox.conf, and forwards keyboard/mouse/audio events.
 
 import { unzipSync, zipSync } from "fflate";
+import { version } from "../../package.json";
 import { PROCESSOR_NAME, WORKLET_URL } from "./dos-audio-worklet";
 
-const DOSBOX_SCRIPT_URL = "/wasm/dosbox0743.js";
-const DOSBOX_WASM_URL = "/wasm/dosbox0743.wasm";
+const RUNTIME_VERSION = encodeURIComponent(version);
+const DOSBOX_SCRIPT_URL = `/wasm/dosbox0743.js?v=${RUNTIME_VERSION}`;
+const DOSBOX_WASM_URL = `/wasm/dosbox0743.wasm?v=${RUNTIME_VERSION}`;
 const AUDIO_RATE = 44100;
 
 export interface CommandInterface {

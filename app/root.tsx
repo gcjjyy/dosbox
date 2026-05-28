@@ -7,7 +7,10 @@ import {
   ScrollRestoration,
 } from "react-router";
 import type { Route } from "./+types/root";
+import { version } from "../package.json";
 import "./app.css";
+
+const runtimeVersion = encodeURIComponent(version);
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
@@ -15,8 +18,8 @@ export const links: Route.LinksFunction = () => [
   { rel: "icon", type: "image/png", sizes: "96x96", href: "/favicon-96x96.png" },
   { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
   { rel: "manifest", href: "/site.webmanifest" },
-  { rel: "preload", href: "/wasm/dosbox0743.js", as: "script" },
-  { rel: "preload", href: "/wasm/dosbox0743.wasm", as: "fetch", type: "application/wasm", crossOrigin: "anonymous" },
+  { rel: "preload", href: `/wasm/dosbox0743.js?v=${runtimeVersion}`, as: "script" },
+  { rel: "preload", href: `/wasm/dosbox0743.wasm?v=${runtimeVersion}`, as: "fetch", type: "application/wasm", crossOrigin: "anonymous" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
   // Geist Sans (display + body) and JetBrains Mono (technical voice).
