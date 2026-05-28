@@ -1,7 +1,6 @@
 // app/components/DosFrame.tsx
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Unzip, UnzipInflate, type Unzipped } from "fflate";
-import { DosEmulator, preloadDosboxRuntime, type CommandInterface, type DosArchive } from "../lib/dos-emulator";
+import { DosEmulator, preloadDosboxRuntime, type CommandInterface } from "../lib/dos-emulator";
 import { BootScreen, type BootPhase } from "./BootScreen";
 import { readUserState } from "../lib/user-state";
 
@@ -29,93 +28,38 @@ export interface DosFrameProps {
 //   download : fetching the DOS ZIP bundle (real bytes/total)
 //   extract  : unpacking the DOS files into the WASM filesystem
 //   boot     : extract complete → first frame from the emulator
-// download dominates wall-clock time; extract/boot are near-instant, so we give
-// download the bulk of the budget (5%→99%) and leave extract/boot a thin tail.
-const W = { wait: 0.05, download: 0.94, extract: 0.005, boot: 0.005 } as const;
+const W = { wait: 0.08, download: 0.62, extract: 0.24, boot: 0.06 } as const;
 
 async function streamBundle(
   url: string,
   signal: AbortSignal,
   onDownload: (fraction: number) => void,
-): Promise<Unzipped> {
+): Promise<Uint8Array> {
   const r = await fetch(url, { signal });
   if (!r.ok) throw new Error(`bundle fetch failed: ${r.status}`);
   const totalHeader = r.headers.get("Content-Length");
   const total = totalHeader ? Number(totalHeader) : 0;
   if (!r.body) {
     // Older browsers / shimmed responses — fall back to a single arrayBuffer.
-    const { unzipSync } = await import("fflate");
-    const archive = unzipSync(new Uint8Array(await r.arrayBuffer()));
+    const buf = new Uint8Array(await r.arrayBuffer());
     onDownload(1);
-    return archive;
+    return buf;
   }
   const reader = r.body.getReader();
-  const entries: Unzipped = {};
-  const pendingFiles = new Set<string>();
-  let downloadDone = false;
+  const chunks: Uint8Array[] = [];
   let received = 0;
-  let settled = false;
-  let resolveArchive!: (archive: Unzipped) => void;
-  let rejectArchive!: (err: unknown) => void;
-  const archiveReady = new Promise<Unzipped>((resolve, reject) => {
-    resolveArchive = resolve;
-    rejectArchive = reject;
-  });
-  const finishIfReady = () => {
-    if (!settled && downloadDone && pendingFiles.size === 0) {
-      settled = true;
-      resolveArchive(entries);
-    }
-  };
-  const fail = (err: unknown) => {
-    if (!settled) {
-      settled = true;
-      rejectArchive(err);
-    }
-  };
-  const unzipper = new Unzip((file) => {
-    if (file.name.endsWith("/")) return;
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    pendingFiles.add(file.name);
-    file.ondata = (err, chunk, final) => {
-      if (err) {
-        fail(err);
-        return;
-      }
-      if (chunk) {
-        chunks.push(chunk);
-        size += chunk.byteLength;
-      }
-      if (final) {
-        const out = new Uint8Array(size);
-        let off = 0;
-        for (const part of chunks) {
-          out.set(part, off);
-          off += part.byteLength;
-        }
-        entries[file.name] = out;
-        pendingFiles.delete(file.name);
-        finishIfReady();
-      }
-    };
-    file.start();
-  });
-  unzipper.register(UnzipInflate);
   for (;;) {
     const { done, value } = await reader.read();
-    if (done) {
-      downloadDone = true;
-      unzipper.push(new Uint8Array(), true);
-      finishIfReady();
-      break;
-    }
-    unzipper.push(value);
+    if (done) break;
+    chunks.push(value);
     received += value.length;
     if (total > 0) onDownload(Math.min(1, received / total));
   }
+  const out = new Uint8Array(received);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
   if (total === 0) onDownload(1);
-  return archiveReady;
+  return out;
 }
 
 async function fetchText(url: string, signal: AbortSignal): Promise<string> {
@@ -211,7 +155,7 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
       preloadDosboxRuntime();
 
       // ── 2. download bundle (real bytes via streaming reader) ───────
-      let bundle: DosArchive;
+      let bundle: Uint8Array;
       try {
         setPhaseProgress("download", 0);
         bundle = await streamBundle(bundleUrl, ac.signal, (f) => setPhaseProgress("download", f));
