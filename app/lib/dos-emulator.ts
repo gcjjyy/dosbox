@@ -36,9 +36,21 @@ interface DosboxFS {
   writeFile: (path: string, data: Uint8Array | string) => void;
   readFile: (path: string) => Uint8Array;
   readdir: (path: string) => string[];
-  stat: (path: string) => { mode: number };
+  stat: (path: string) => DosboxStat;
   isDir: (mode: number) => boolean;
   isFile: (mode: number) => boolean;
+}
+
+interface DosboxStat {
+  mode: number;
+  size?: number;
+  mtime?: Date | number;
+  mtimeMs?: number;
+}
+
+interface FileMeta {
+  size: number;
+  mtimeMs: number;
 }
 
 interface DosboxModule {
@@ -124,14 +136,6 @@ function normalizeZipName(name: string): string | null {
   if (!rel || rel.endsWith("/")) return null;
   if (rel.split("/").some((part) => part === ".." || part === "" || part.startsWith("."))) return null;
   return rel;
-}
-
-function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
 }
 
 function toSDLMouseButton(button: number): number {
@@ -264,7 +268,7 @@ export class DosEmulator {
   private events = new EventHub();
   private firstFrame = false;
   private exiting = false;
-  private baseline = new Map<string, Uint8Array>();
+  private baseline = new Map<string, FileMeta>();
 
   private leftTouchDown = false;
   private rightTouchActive = false;
@@ -323,10 +327,10 @@ export class DosEmulator {
     if (this.exiting) return;
     this.module = module;
 
+    this.baseline = new Map();
     this.mountDrive(module, this.opts.bundle, 0, 0.8);
     if (this.opts.overlay) this.mountDrive(module, this.opts.overlay, 0.8, 0.95);
     module.FS.writeFile("/dosbox.conf", this.opts.config);
-    this.baseline = this.snapshotDrive(module);
     this.opts.onExtractProgress?.(1);
 
     this.ci = this.createCommandInterface(module);
@@ -387,6 +391,7 @@ export class DosEmulator {
       const slash = dest.lastIndexOf("/");
       if (slash > 0) this.ensureDir(module, dest.slice(0, slash));
       module.FS.writeFile(dest, data);
+      this.baseline.set(rel, this.fileMeta(module.FS.stat(dest), data.byteLength));
       this.opts.onExtractProgress?.(progressBase + progressSpan * ((idx + 1) / total));
     });
   }
@@ -403,14 +408,21 @@ export class DosEmulator {
     }
   }
 
-  private snapshotDrive(module: DosboxModule): Map<string, Uint8Array> {
-    const out = new Map<string, Uint8Array>();
-    for (const [rel, bytes] of this.readDrive(module)) out.set(rel, bytes);
-    return out;
+  private fileMeta(stat: DosboxStat, fallbackSize = 0): FileMeta {
+    return {
+      size: stat.size ?? fallbackSize,
+      mtimeMs: this.statMtimeMs(stat),
+    };
   }
 
-  private readDrive(module: DosboxModule): Array<[string, Uint8Array]> {
-    const files: Array<[string, Uint8Array]> = [];
+  private statMtimeMs(stat: DosboxStat): number {
+    if (stat.mtime instanceof Date) return stat.mtime.getTime();
+    if (typeof stat.mtime === "number") return stat.mtime;
+    return stat.mtimeMs ?? 0;
+  }
+
+  private walkDrive(module: DosboxModule): Array<{ rel: string; abs: string; meta: FileMeta }> {
+    const files: Array<{ rel: string; abs: string; meta: FileMeta }> = [];
     const rec = (dir: string, relDir: string) => {
       for (const name of module.FS.readdir(dir)) {
         if (name === "." || name === "..") continue;
@@ -418,7 +430,7 @@ export class DosEmulator {
         const rel = relDir ? `${relDir}/${name}` : name;
         const st = module.FS.stat(abs);
         if (module.FS.isDir(st.mode)) rec(abs, rel);
-        else if (module.FS.isFile(st.mode)) files.push([rel, new Uint8Array(module.FS.readFile(abs))]);
+        else if (module.FS.isFile(st.mode)) files.push({ rel, abs, meta: this.fileMeta(st) });
       }
     };
     rec("/c", "");
@@ -427,9 +439,10 @@ export class DosEmulator {
 
   private persistDrive(module: DosboxModule): Uint8Array | null {
     const changed: Record<string, Uint8Array> = {};
-    for (const [rel, bytes] of this.readDrive(module)) {
+    for (const { rel, abs, meta } of this.walkDrive(module)) {
       const base = this.baseline.get(rel);
-      if (!base || !arraysEqual(base, bytes)) changed[rel] = bytes;
+      if (base && base.size === meta.size && base.mtimeMs === meta.mtimeMs) continue;
+      changed[rel] = new Uint8Array(module.FS.readFile(abs));
     }
     const names = Object.keys(changed);
     if (names.length === 0) return null;
