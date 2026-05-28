@@ -1,8 +1,9 @@
 // app/components/DosFrame.tsx
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { unzipSync } from "fflate";
 import { DosEmulator, type CommandInterface } from "../lib/dos-emulator";
 import { BootScreen, type BootPhase } from "./BootScreen";
-import { readUserState } from "../lib/user-state";
+import { clearUserState, readUserState } from "../lib/user-state";
 
 export type { CommandInterface };
 export type { DosEmulator };
@@ -70,6 +71,19 @@ async function fetchText(url: string, signal: AbortSignal): Promise<string> {
   const r = await fetch(url, { signal });
   if (!r.ok) throw new Error(`config fetch failed: ${r.status}`);
   return r.text();
+}
+
+function readValidUserState(): Uint8Array | null {
+  const overlay = readUserState();
+  if (!overlay) return null;
+  try {
+    unzipSync(overlay);
+    return overlay;
+  } catch (err) {
+    console.warn("[dosframe] ignoring invalid saved user state:", err);
+    clearUserState();
+    return null;
+  }
 }
 
 export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, width, height, vAlign = "middle", canvasOverlay }: DosFrameProps) {
@@ -173,7 +187,7 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
       setPhaseProgress("extract", 0);
       // Read the per-user save (if any) once at boot. The toolbar's reactive
       // useUserState() hook covers UI; the engine just needs the bytes here.
-      const overlay = readUserState();
+      const overlay = readValidUserState();
       emulator = new DosEmulator({
         canvas: ref.current,
         bundle,
