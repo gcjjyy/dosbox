@@ -171,6 +171,17 @@ interface BaselineEntry {
   crc: number;
 }
 
+interface ZipWorkerEntry {
+  name: string;
+  data: ArrayBuffer;
+}
+
+type ZipWorkerMessage =
+  | { type: "progress"; id: number; phase: "inflate" | "write"; fraction: number }
+  | { type: "batch"; id: number; seq: number; bytes: number; entries: ZipWorkerEntry[] }
+  | { type: "done"; id: number }
+  | { type: "error"; id: number; message: string };
+
 let crcTable: Uint32Array | null = null;
 
 function getCrcTable(): Uint32Array {
@@ -192,6 +203,19 @@ function crc32(bytes: Uint8Array): number {
     crc = table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
   }
   return (crc ^ 0xffffffff) >>> 0;
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function transferableBuffer(bytes: Uint8Array): ArrayBuffer {
+  if (bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength && bytes.buffer instanceof ArrayBuffer) {
+    return bytes.buffer;
+  }
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 }
 
 function readU16(bytes: Uint8Array, offset: number): number {
@@ -374,6 +398,8 @@ export class DosEmulator {
   private audioChannels = 2;
   private resampleRatio = 1;
   private firstFrame = false;
+  private frameWidth = 0;
+  private frameHeight = 0;
   private exiting = false;
   private baseline = new Map<string, BaselineEntry>();
 
@@ -420,7 +446,7 @@ export class DosEmulator {
       noInitialRun: true,
       noExitRuntime: true,
       SDL_numSimultaneouslyQueuedBuffers: 2,
-      webgl2DPresentation: true,
+      webgl2DPresentation: false,
       canvas2DContextAttributes: {
         alpha: false,
         desynchronized: false,
@@ -437,9 +463,9 @@ export class DosEmulator {
     this.module = module;
     this.opts.onRuntimeReady?.();
 
-    this.mountDrive(module, this.opts.bundle, 0, 0.8);
+    await this.mountDrive(module, this.opts.bundle, 0, 0.8);
     if (this.exiting) return;
-    if (this.opts.overlay) this.mountDrive(module, this.opts.overlay, 0.8, 0.15);
+    if (this.opts.overlay) await this.mountDrive(module, this.opts.overlay, 0.8, 0.15);
     if (this.exiting) return;
     module.FS.writeFile("/dosbox.conf", this.opts.config);
     this.opts.onExtractProgress?.(1);
@@ -488,10 +514,15 @@ export class DosEmulator {
     if (pressed && info.charCode) dispatchKeyboard("keypress", info);
   }
 
-  private mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): void {
+  private async mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): Promise<void> {
     this.ensureDir(module, "/c");
     this.opts.onExtractProgress?.(progressBase);
     const baseline = zipBaseline(zipBytes);
+    if (typeof Worker !== "undefined") {
+      await this.mountDriveWithWorker(module, zipBytes, baseline, progressBase, progressSpan);
+      return;
+    }
+
     const entries = unzipSync(zipBytes);
     if (this.exiting) return;
     this.opts.onExtractProgress?.(progressBase + progressSpan * 0.08);
@@ -513,7 +544,72 @@ export class DosEmulator {
       const written = idx + 1;
       const fraction = 0.08 + 0.9 * (written / total);
       this.opts.onExtractProgress?.(progressBase + progressSpan * fraction);
+      if (idx % 32 === 31) await yieldToBrowser();
     }
+  }
+
+  private mountDriveWithWorker(
+    module: DosboxModule,
+    zipBytes: Uint8Array,
+    baseline: Map<string, BaselineEntry>,
+    progressBase: number,
+    progressSpan: number,
+  ): Promise<void> {
+    const id = Date.now() + Math.floor(Math.random() * 1_000_000);
+    const worker = new Worker(new URL("./zip-mount-worker.ts", import.meta.url), { type: "module" });
+    const zipBuffer = transferableBuffer(zipBytes);
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (err?: unknown) => {
+        if (settled) return;
+        settled = true;
+        worker.terminate();
+        if (err) reject(err);
+        else resolve();
+      };
+
+      const writeBatch = async (msg: Extract<ZipWorkerMessage, { type: "batch" }>) => {
+        try {
+          for (let idx = 0; idx < msg.entries.length; idx++) {
+            if (this.exiting) return finish();
+            const entry = msg.entries[idx];
+            const rel = normalizeZipName(entry.name);
+            if (!rel) continue;
+            const data = new Uint8Array(entry.data);
+            const dest = `/c/${rel}`;
+            const slash = dest.lastIndexOf("/");
+            if (slash > 0) this.ensureDir(module, dest.slice(0, slash));
+            module.FS.writeFile(dest, data);
+            this.baseline.set(rel, baseline.get(rel) ?? { size: data.length, crc: crc32(data) });
+            if (idx % 16 === 15) await yieldToBrowser();
+          }
+          worker.postMessage({ type: "ack", id, seq: msg.seq });
+        } catch (err) {
+          finish(err);
+        }
+      };
+
+      worker.onmessage = (event: MessageEvent<ZipWorkerMessage>) => {
+        const msg = event.data;
+        if (msg.id !== id || settled) return;
+        if (msg.type === "progress") {
+          const local = msg.phase === "inflate"
+            ? 0.02 + 0.68 * msg.fraction
+            : 0.7 + 0.28 * msg.fraction;
+          this.opts.onExtractProgress?.(progressBase + progressSpan * local);
+        } else if (msg.type === "batch") {
+          void writeBatch(msg);
+        } else if (msg.type === "done") {
+          this.opts.onExtractProgress?.(progressBase + progressSpan);
+          finish();
+        } else if (msg.type === "error") {
+          finish(new Error(msg.message));
+        }
+      };
+      worker.onerror = (event) => finish(new Error(event.message));
+      worker.postMessage({ type: "extract", id, zip: zipBuffer }, [zipBuffer]);
+    });
   }
 
   private ensureDir(module: DosboxModule, dir: string): void {
@@ -556,9 +652,9 @@ export class DosEmulator {
   }
 
   private handleFrame(width: number, height: number): void {
-    if (width > 0 && height > 0 && (this.canvas.width !== width || this.canvas.height !== height)) {
-      this.canvas.width = width;
-      this.canvas.height = height;
+    if (width > 0 && height > 0 && (this.frameWidth !== width || this.frameHeight !== height)) {
+      this.frameWidth = width;
+      this.frameHeight = height;
       this.events.emitFrameSize(width, height);
     }
     this.applyDisplaySize();
