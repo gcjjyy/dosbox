@@ -4,7 +4,7 @@
 // generated Emscripten module, mounts the DOS archive into MEMFS, injects a
 // separately served dosbox.conf, and forwards keyboard/mouse/audio events.
 
-import { unzipSync, zipSync } from "fflate";
+import { unzip, zipSync, type Unzipped } from "fflate";
 import { PROCESSOR_NAME, WORKLET_URL } from "./dos-audio-worklet";
 
 const DOSBOX_SCRIPT_URL = "/wasm/dosbox0743.js";
@@ -145,6 +145,19 @@ function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+function unzipArchive(zipBytes: Uint8Array): Promise<Unzipped> {
+  return new Promise((resolve, reject) => {
+    unzip(zipBytes, (err, entries) => {
+      if (err) reject(err);
+      else resolve(entries);
+    });
+  });
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function toSDLMouseButton(button: number): number {
@@ -346,8 +359,8 @@ export class DosEmulator {
     if (this.exiting) return;
     this.module = module;
 
-    this.mountDrive(module, this.opts.bundle, 0, 0.8);
-    if (this.opts.overlay) this.mountDrive(module, this.opts.overlay, 0.8, 0.95);
+    await this.mountDrive(module, this.opts.bundle, 0, 0.8);
+    if (this.opts.overlay) await this.mountDrive(module, this.opts.overlay, 0.8, 0.95);
     module.FS.writeFile("/dosbox.conf", this.opts.config);
     this.baseline = this.snapshotDrive(module);
     this.opts.onExtractProgress?.(1);
@@ -396,22 +409,24 @@ export class DosEmulator {
     if (pressed && info.charCode) dispatchKeyboard("keypress", info);
   }
 
-  private mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): void {
+  private async mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): Promise<void> {
     this.ensureDir(module, "/c");
-    const entries = unzipSync(zipBytes);
+    const entries = await unzipArchive(zipBytes);
     const files: Array<[string, Uint8Array]> = [];
     for (const [name, data] of Object.entries(entries)) {
       const rel = normalizeZipName(name);
       if (rel) files.push([rel, data]);
     }
     const total = Math.max(1, files.length);
-    files.forEach(([rel, data], idx) => {
+    for (let idx = 0; idx < files.length; idx++) {
+      const [rel, data] = files[idx];
       const dest = `/c/${rel}`;
       const slash = dest.lastIndexOf("/");
       if (slash > 0) this.ensureDir(module, dest.slice(0, slash));
       module.FS.writeFile(dest, data);
       this.opts.onExtractProgress?.(progressBase + progressSpan * ((idx + 1) / total));
-    });
+      if (idx % 20 === 19) await yieldToBrowser();
+    }
   }
 
   private ensureDir(module: DosboxModule, dir: string): void {
