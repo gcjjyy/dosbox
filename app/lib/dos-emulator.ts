@@ -394,6 +394,7 @@ export interface DosEmulatorOpts {
   overlay?: Uint8Array | null;
   onReady?: (ci: CommandInterface) => void;
   onFirstFrame?: () => void;
+  onBeforeStart?: () => void | Promise<void>;
   onError?: (err: unknown) => void;
   onRuntimeReady?: () => void;
   onExtractProgress?: (fraction: number) => void;
@@ -492,6 +493,8 @@ export class DosEmulator {
     this.ci = this.createCommandInterface(module);
     this.attachListeners();
     this.setupAudioUnlock();
+    await this.opts.onBeforeStart?.();
+    if (this.exiting) return;
     module.callMain(["-conf", "/dosbox.conf"]);
     this.opts.onReady?.(this.ci);
   }

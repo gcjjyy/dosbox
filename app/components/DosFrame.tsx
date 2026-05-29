@@ -32,6 +32,15 @@ export interface DosFrameProps {
 //   boot     : extract complete → first frame from the emulator
 const W = { wait: 0.02, download: 0.77, runtime: 0.2, extract: 0.005, boot: 0.005 } as const;
 const MAX_USER_STATE_BYTES = 3_500_000;
+const BOOT_OVERLAY_OUT_MS = 280;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 async function streamBundle(
   url: string,
@@ -99,7 +108,6 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
   const [phase, setPhase] = useState<BootPhase>("wait");
   const [bootMessage, setBootMessage] = useState<string | null>(null);
   const [overlayPos, setOverlayPos] = useState({ left: 16, top: 16 });
-  const mountedAt = useRef<number>(0);
   const fixedSize = width != null && height != null;
 
   useLayoutEffect(() => {
@@ -139,7 +147,6 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
   }, [fixedSize, width, height]);
 
   useEffect(() => {
-    mountedAt.current = Date.now();
     const ac = new AbortController();
     let cancelled = false;
     let emulator: DosEmulator | null = null;
@@ -226,22 +233,22 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
           setPhaseProgress("extract", 0);
         },
         onExtractProgress: (f) => setPhaseProgress("extract", f),
-        onReady: (ci) => {
-          // Extract is done by the time onReady fires inside the bridge,
-          // but the bridge doesn't always emit a final 1.0 progress tick.
+        onBeforeStart: async () => {
+          // Extract is done here, but the bridge doesn't always emit a final
+          // 1.0 progress tick. Hide the overlay before callMain() so any
+          // pre-yield DOSBox startup work cannot visibly freeze CSS animation.
           setPhaseProgress("extract", 1);
           setPhaseProgress("boot", 0.4);
+          await nextAnimationFrame();
+          if (cancelled) return;
+          setBootVisible(false);
+          await delay(BOOT_OVERLAY_OUT_MS + 40);
+        },
+        onReady: (ci) => {
           onReady(ci);
         },
         onFirstFrame: () => {
           setPhaseProgress("boot", 1);
-          const MIN_MS = 1500;
-          const elapsed = Date.now() - mountedAt.current;
-          const wait = Math.max(0, MIN_MS - elapsed);
-          setTimeout(() => {
-            if (cancelled) return;
-            setBootVisible(false);
-          }, wait);
         },
         onError: failBoot,
       });

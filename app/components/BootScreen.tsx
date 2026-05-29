@@ -29,7 +29,8 @@ export function BootScreen({
   phase: BootPhase;
   message?: string | null;
 }) {
-  const pct = Math.max(0, Math.min(100, Math.round(progress * 100)));
+  const clamped = Math.max(0, Math.min(1, progress));
+  const pct = clamped >= 1 ? 100 : Math.max(0, Math.min(99, Math.floor(clamped * 100)));
 
   return (
     <div
