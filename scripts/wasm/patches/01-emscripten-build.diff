@@ -1,0 +1,241 @@
+diff -urN a/configure.ac b/configure.ac
+--- a/configure.ac
++++ b/configure.ac
+@@ -19,6 +19,23 @@
+ AC_PROG_INSTALL
+ AC_PROG_RANLIB
+ 
++dnl Detect Emscripten build (emconfigure sets $EMSCRIPTEN to the sysroot path
++dnl and/or the configure invocation passes --host=wasm32). Several library
++dnl probes below (AM_PATH_SDL via sdl-config, AC_CHECK_LIB against X11/GL/png/
++dnl SDL_net/SDL_sound/curses) misbehave under emscripten: they either run a
++dnl host-system helper script or AC_TRY_LINK against host libraries that the
++dnl emscripten sysroot can't satisfy. Skip them in that case.
++EMSCRIPTEN_BUILD=no
++case "$host" in
++    wasm32-*|*-emscripten*)
++        EMSCRIPTEN_BUILD=yes
++        ;;
++esac
++if test "x$EMSCRIPTEN" != "x"; then
++    EMSCRIPTEN_BUILD=yes
++fi
++AM_CONDITIONAL(EMSCRIPTEN_BUILD, test x$EMSCRIPTEN_BUILD = xyes)
++
+ dnl Some needed libaries for OS2
+ dnl perharps join this with the other target depended checks. move them upwards
+ if test x$host = xi386-pc-os2-emx ; then
+@@ -27,6 +44,7 @@
+ fi
+ 
+ dnl Check for SDL
++if test x$EMSCRIPTEN_BUILD = xno ; then
+ SDL_VERSION=1.2.0
+ AM_PATH_SDL($SDL_VERSION,
+             :,
+@@ -46,8 +64,29 @@
+ ;
+ }
+ ])],AC_MSG_RESULT([yes]),[
+- AC_MSG_RESULT([no]) 
++ AC_MSG_RESULT([no])
+  AC_MSG_ERROR([Only libSDL 1.2.X supported])])
++else
++dnl Emscripten: pull SDL1 from emcc's ports system. -sUSE_SDL=1 is passed to
++dnl both the compiler (resolves SDL.h) and the linker (resolves -lSDL).
++SDL_CFLAGS="-sUSE_SDL=1"
++SDL_LIBS="-sUSE_SDL=1"
++AC_SUBST(SDL_CFLAGS)
++AC_SUBST(SDL_LIBS)
++CPPFLAGS="$CPPFLAGS $SDL_CFLAGS"
++LIBS="$LIBS $SDL_LIBS"
++dnl Define JSDOS globally via CPPFLAGS. Autoconf substitutes CPPFLAGS into
++dnl every generated Makefile (all subdirectories), so emcc compiles in
++dnl src/dos/, src/hardware/, etc. all see -DJSDOS. automake's per-directory
++dnl AM_CPPFLAGS does NOT propagate to subdir Makefile.am, so the define must
++dnl live here to reach the SDL-CDROM guards in src/dos/{cdrom,dos_programs}.cpp.
++CPPFLAGS="$CPPFLAGS -DJSDOS"
++dnl DOSBox 0.74-3 is C++03-era and uses the 'register' storage-class keyword
++dnl (e.g. src/gui/render_templates_sai.h), which ISO C++17 removed and emsdk's
++dnl clang rejects as a hard error. Force C++14, where 'register' is merely
++dnl deprecated (a warning). Set on global CXXFLAGS so it reaches every subdir.
++CXXFLAGS="$CXXFLAGS -std=gnu++14"
++fi
+ 
+ dnl Checks for header files.
+ 
+@@ -386,6 +425,7 @@
+ fi
+ 
+ AH_TEMPLATE(C_SSHOT,[Define to 1 to enable screenshots, requires libpng])
++if test x$EMSCRIPTEN_BUILD = xno ; then
+ AC_CHECK_HEADER(png.h,have_png_h=yes,)
+ AC_CHECK_LIB(png, png_get_io_ptr, have_png_lib=yes, ,-lz)
+ if test x$have_png_lib = xyes -a x$have_png_h = xyes ; then
+@@ -394,9 +434,15 @@
+ else
+   AC_MSG_WARN([Can't find libpng, screenshot support disabled])
+ fi
++else
++dnl Emscripten port supplies libpng + zlib, but DOSBox's screenshot code is
++dnl non-essential in the browser. Leave C_SSHOT undefined.
++AC_MSG_NOTICE([Emscripten build: libpng probe skipped, screenshots disabled])
++fi
+ 
+ AH_TEMPLATE(C_MODEM,[Define to 1 to enable internal modem support, requires SDL_net])
+ AH_TEMPLATE(C_IPX,[Define to 1 to enable IPX over Internet networking, requires SDL_net])
++if test x$EMSCRIPTEN_BUILD = xno ; then
+ AC_CHECK_HEADER(SDL_net.h,have_sdl_net_h=yes,)
+ 
+ if test x$host = xi386-pc-os2-emx ; then
+@@ -414,11 +460,15 @@
+    LIBS="$LIBS -lSDL_net"
+    AC_DEFINE(C_MODEM,1)
+    AC_DEFINE(C_IPX,1)
+-else 
++else
+    AC_MSG_WARN([Can't find SDL_net, internal modem and ipx disabled])
+ fi
++else
++AC_MSG_NOTICE([Emscripten build: SDL_net probe skipped, modem/IPX disabled])
++fi
+ 
+ AH_TEMPLATE(C_X11_XKB,[define to 1 if you have XKBlib.h and X11 lib])
++if test x$EMSCRIPTEN_BUILD = xno ; then
+ AC_CHECK_LIB(X11, main, have_x11_lib=yes, have_x11_lib=no, )
+ AC_CHECK_HEADER(X11/XKBlib.h, have_x11_h=yes, have_x11_h=no, )
+ AC_MSG_CHECKING(for XKBlib support)
+@@ -429,13 +479,15 @@
+ else
+    AC_MSG_RESULT(no)
+ fi
++fi
+ 
+ AH_TEMPLATE(C_OPENGL,[Define to 1 to use opengl display output support])
++if test x$EMSCRIPTEN_BUILD = xno ; then
+ AC_CHECK_LIB(GL, main, have_gl_lib=yes, have_gl_lib=no , )
+ AC_CHECK_LIB(opengl32, main, have_opengl32_lib=yes,have_opengl32_lib=no , )
+ AC_CHECK_HEADER(GL/gl.h, have_gl_h=yes , have_gl_h=no , )
+ AC_ARG_ENABLE(opengl,AC_HELP_STRING([--disable-opengl],[Disable opengl support]),,enable_opengl=yes)
+-AC_MSG_CHECKING(whether opengl display output will be enabled) 
++AC_MSG_CHECKING(whether opengl display output will be enabled)
+ if test x$enable_opengl = xyes; then
+ case "$host" in
+     *-*-darwin*)
+@@ -444,11 +496,11 @@
+        AC_DEFINE(C_OPENGL,1)
+        ;;
+     *)
+-       if test x$have_gl_h = xyes -a x$have_gl_lib = xyes ; then 
++       if test x$have_gl_h = xyes -a x$have_gl_lib = xyes ; then
+          AC_MSG_RESULT(yes)
+          LIBS="$LIBS -lGL"
+          AC_DEFINE(C_OPENGL,1)
+-       elif test x$have_gl_h = xyes -a x$have_opengl32_lib = xyes ; then 
++       elif test x$have_gl_h = xyes -a x$have_opengl32_lib = xyes ; then
+          AC_MSG_RESULT(yes)
+          LIBS="$LIBS -lopengl32"
+          AC_DEFINE(C_OPENGL,1)
+@@ -460,8 +512,10 @@
+ else
+    AC_MSG_RESULT(no)
+ fi
++fi
+ 
+ AH_TEMPLATE(C_SDL_SOUND,[Define to 1 to enable SDL_sound support])
++if test x$EMSCRIPTEN_BUILD = xno ; then
+ AC_CHECK_HEADER(SDL_sound.h,have_SDL_sound_h=yes,)
+ AC_CHECK_LIB(SDL_sound, Sound_Init, have_SDL_sound_init=yes,,)
+ AC_CHECK_LIB(SDL_sound, Sound_Seek, have_SDL_sound_seek=yes,,)
+@@ -469,11 +523,12 @@
+   if test x$have_SDL_sound_seek = xyes ; then
+     LIBS="-lSDL_sound $LIBS"
+     AC_DEFINE(C_SDL_SOUND,1)
+-   else 
++   else
+      AC_MSG_WARN([Can't find SoundSeek in libSDL_Sound, libSDL_sound support disabled])
+    fi
+ else
+   AC_MSG_WARN([Can't find libSDL_sound, libSDL_sound support disabled])
++fi
+ fi
+ 
+ dnl Check for mprotect. Needed for 64 bits linux 
+diff -urN a/src/Makefile.am b/src/Makefile.am
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -1,6 +1,6 @@
+ AM_CPPFLAGS = -I$(top_srcdir)/include
+ 
+-SUBDIRS = cpu debug dos fpu gui hardware libs ints misc shell platform 
++SUBDIRS = cpu debug dos fpu gui hardware libs ints misc shell platform
+ 
+ bin_PROGRAMS = dosbox
+ 
+@@ -17,5 +17,66 @@
+                hardware/serialport/libserial.a libs/gui_tk/libgui_tk.a
+ 
+ EXTRA_DIST = winres.rc dosbox.ico
++
++if EMSCRIPTEN_BUILD
++# Emscripten build: emit dosbox0743.js + dosbox0743.wasm via emcc with Asyncify so the
++# DOS hot loop can yield to the JS event loop without blocking.
++#
++# Compile-time flags (-DJSDOS, -sUSE_SDL=1) are applied globally via CPPFLAGS in
++# configure.ac so they reach every subdirectory (src/dos/, src/hardware/, ...).
++# automake's AM_CPPFLAGS is per-directory and would NOT propagate, which is why
++# the JSDOS define lives in configure.ac, not here.
++# Link-time:
++#   -sASYNCIFY=1            allow blocking C calls to yield to JS.
++#   -sASYNCIFY_STACK_SIZE   conservative; tune in Phase C if "stack overflow" hits.
++#   -Oz -flto=thin         match jsdos release builds' small/fast artifacts.
++#   -sMALLOC=emmalloc      lower allocator overhead for browser-only runtime.
++#   -sTOTAL_MEMORY=64MB    jsdos baseline initial memory; growth remains enabled.
++#   -sALLOW_MEMORY_GROWTH=1 DOSBox can grow past 64 MB once a game loads.
++#   -sMODULARIZE=1 +
++#   -sEXPORT_NAME=createDosbox  -> the app/lib/dos-emulator.ts factory contract.
++#   -sENVIRONMENT=web       no Node/worker shim.
++#   -sEXPORTED_FUNCTIONS=_main
++#                           Patches 02/03 will add _send_key, _send_mouse, _exit_dosbox.
++#                           Bracketless form: emcc accepts comma-separated names
++#                           directly, which sidesteps m4's [ ] quote characters
++#                           when autoreconf regenerates Makefile.in.
++#   -sEXPORTED_RUNTIME_METHODS=ccall,FS,HEAPU8,HEAPF32,callMain
++#                           ccall for invoking the exported funcs from JS; FS to
++#                           mount the DOS image; HEAP views for frame/audio.
++AM_LDFLAGS = -sASYNCIFY=1 \
++             -sASYNCIFY_STACK_SIZE=16384 \
++             -Oz \
++             -flto=thin \
++             -sMALLOC=emmalloc \
++             -sTOTAL_STACK=1MB \
++             -sTOTAL_MEMORY=67108864 \
++             -sALLOW_MEMORY_GROWTH=1 \
++             -sMODULARIZE=1 \
++             -sEXPORT_NAME=createDosbox \
++             -sENVIRONMENT=web \
++             -sUSE_SDL=1 \
++             -sEXPORTED_FUNCTIONS=_main \
++             -sEXPORTED_RUNTIME_METHODS=ccall,FS,HEAPU8,HEAPF32,callMain
++
++# Under emcc, automake's link step typically produces dosbox.js (with EXEEXT=.js)
++# plus a sibling dosbox.wasm; on some configurations the link target is plain
++# "dosbox" (no extension) with dosbox.wasm alongside. The rename hook below
++# handles both layouts and renames to dosbox0743.{js,wasm} so build.sh's docker cp
++# can find them by their final names.
++all-local: dosbox0743.js
++
++dosbox0743.js: dosbox$(EXEEXT)
++	@echo "  RENAME   dosbox -> dosbox0743.js + dosbox0743.wasm"
++	@if [ -f dosbox.js ];   then mv dosbox.js   dosbox0743.js;   fi
++	@if [ -f dosbox.wasm ]; then mv dosbox.wasm dosbox0743.wasm; fi
++	@if [ -f dosbox ] && [ ! -f dosbox0743.js ]; then mv dosbox dosbox0743.js; fi
++	@sed -i 's|dosbox\.wasm|dosbox0743.wasm|g' dosbox0743.js
++	@test -f dosbox0743.js   || { echo "dosbox0743.js not produced"; exit 1; }
++	@test -f dosbox0743.wasm || { echo "dosbox0743.wasm not produced"; exit 1; }
++
++clean-local:
++	-rm -f dosbox0743.js dosbox0743.wasm dosbox.js dosbox.wasm
++endif
+ 
+ 

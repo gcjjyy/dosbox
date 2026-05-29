@@ -1,0 +1,20 @@
+diff -urN a/src/dos/cdrom.h b/src/dos/cdrom.h
+--- a/src/dos/cdrom.h	2026-05-20 11:16:00
++++ b/src/dos/cdrom.h	2026-05-20 11:16:21
+@@ -22,6 +22,16 @@
+ 
+ #define RAW_SECTOR_SIZE		2352
+ #define COOKED_SECTOR_SIZE	2048
++
++#define FRAMES_TO_MSF(f, M,S,F)	{					\
++	int value = f;								\
++	*(F) = (Bit8u)(value%75);					\
++	value /= 75;								\
++	*(S) = (Bit8u)(value%60);					\
++	value /= 60;								\
++	*(M) = (Bit8u)value;						\
++}
++#define MSF_TO_FRAMES(M, S, F)	((M)*60*75+(S)*75+(F))
+ 
+ enum { CDROM_USE_SDL, CDROM_USE_ASPI, CDROM_USE_IOCTL_DIO, CDROM_USE_IOCTL_DX, CDROM_USE_IOCTL_MCI };
+ 

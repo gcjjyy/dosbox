@@ -54,7 +54,7 @@ export const DOSBOX_CONF = [
   "[mixer]",
   "nosound=false",
   "rate=44100",
-  "blocksize=1024",
+  "blocksize=512",
   "prebuffer=25",
   "",
   "[midi]",

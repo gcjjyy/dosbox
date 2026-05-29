@@ -1,0 +1,256 @@
+diff -urN a/src/Makefile.am b/src/Makefile.am
+--- a/src/Makefile.am	2026-05-20 11:21:34
++++ b/src/Makefile.am	2026-05-20 11:21:37
+@@ -33,11 +33,13 @@
+ #   -sMODULARIZE=1 +
+ #   -sEXPORT_NAME=createDosbox  -> the app/lib/dos-emulator.ts factory contract.
+ #   -sENVIRONMENT=web       no Node/worker shim.
+-#   -sEXPORTED_FUNCTIONS=_main
+-#                           Patches 02/03 will add _send_key, _send_mouse, _exit_dosbox.
++#   -sEXPORTED_FUNCTIONS=_main,_send_key,_send_mouse_motion,_send_mouse_button,_exit_dosbox
+ #                           Bracketless form: emcc accepts comma-separated names
+ #                           directly, which sidesteps m4's [ ] quote characters
+-#                           when autoreconf regenerates Makefile.in.
++#                           when autoreconf regenerates Makefile.in. The four
++#                           _send_*/_exit_dosbox symbols are defined in
++#                           src/gui/sdlmain.cpp (under JSDOS, EMSCRIPTEN_KEEPALIVE
++#                           extern "C"); they're the JS->C input + lifecycle path.
+ #   -sEXPORTED_RUNTIME_METHODS=ccall,FS,HEAPU8,HEAPF32,callMain
+ #                           ccall for invoking the exported funcs from JS; FS to
+ #                           mount the DOS image; HEAP views for frame/audio.
+@@ -48,7 +50,7 @@
+              -sEXPORT_NAME=createDosbox \
+              -sENVIRONMENT=web \
+              -sUSE_SDL=1 \
+-             -sEXPORTED_FUNCTIONS=_main \
++             -sEXPORTED_FUNCTIONS=_main,_send_key,_send_mouse_motion,_send_mouse_button,_exit_dosbox \
+              -sEXPORTED_RUNTIME_METHODS=ccall,FS,HEAPU8,HEAPF32,callMain
+ 
+ # Under emcc, automake's link step typically produces dosbox.js (with EXEEXT=.js)
+diff -urN a/src/gui/sdlmain.cpp b/src/gui/sdlmain.cpp
+--- a/src/gui/sdlmain.cpp	2019-06-26 23:56:44
++++ b/src/gui/sdlmain.cpp	2026-05-20 11:21:50
+@@ -36,6 +36,19 @@
+ #include "cross.h"
+ #include "SDL.h"
+ 
++#ifdef JSDOS
++/* JS bridge — EM_JS callbacks and exported C entry points used by the
++ * browser wrapper (app/lib/dos-emulator.ts). All emscripten-specific code in
++ * this file lives under JSDOS guards added by patches 02/03; native builds
++ * are byte-for-byte unchanged.
++ */
++#include <emscripten.h>
++#include <stdint.h>
++#ifndef SDL_INIT_CDROM
++#define SDL_INIT_CDROM 0
++#endif
++#endif
++
+ #include "dosbox.h"
+ #include "video.h"
+ #include "mouse.h"
+@@ -54,6 +67,130 @@
+ #define MAPPERFILE "mapper-" VERSION ".map"
+ //#define DISABLE_JOYSTICK
+ 
++#ifdef JSDOS
++/* ------------------------------------------------------------------------
++ * JS <-> C bridge
++ *
++ * EM_JS macros below register two callbacks that DOSBox invokes whenever a
++ * frame or audio chunk is produced. The JS wrapper sets `Module.onFrame` /
++ * `Module.onAudio` at startup; this is the entire reason patch 03 exists.
++ *
++ * The frame callback hands the JS side a pointer into the SDL surface's
++ * pixel buffer (BGRA8888 under SCREEN_SURFACE — DOSBox calls SDL_SetVideoMode
++ * with a 32 bpp surface, and on emscripten the SDL1 port stores frames in the
++ * Module.HEAPU8 view at `ptr`). JS reads `stride * h` bytes starting at `ptr`
++ * before returning — the buffer is overwritten on the next render pass.
++ *
++ * The audio callback receives a Float32Array of interleaved stereo samples
++ * already converted from the mixer's native Bit16s. We do the int16->float
++ * conversion in C (see js_emit_audio below) to keep audio-bus.ts's contract
++ * simple and to avoid burning JS time on a per-chunk loop.
++ *
++ * NOTE: see app/lib/dos-emulator.ts for the consumer side.
++ * ------------------------------------------------------------------------ */
++
++EM_JS(void, js_on_frame, (const uint8_t* ptr, int w, int h, int stride), {
++	if (Module["onFrame"]) Module["onFrame"](ptr, w, h, stride);
++});
++
++EM_JS(void, js_on_audio, (const float* samples, int n_samples, int sample_rate), {
++	if (Module["onAudio"]) Module["onAudio"](samples, n_samples, sample_rate);
++});
++
++/* Internal helper used by mixer.cpp's MIXER_CallBack. Lives in this TU so the
++ * EM_JS definition above is visible without exposing a header. mixer.cpp gets
++ * the prototype via an extern declaration guarded by JSDOS.
++ *
++ * `stream` is interleaved stereo int16 (AUDIO_S16SYS), `byte_len` bytes; we
++ * convert to a thread-local float scratch buffer at /32768.0 and forward.
++ * `byte_len/4` = sample frames (stereo); we report `n_samples` as the JS-side
++ * float count (= frames * 2) so the receiver can shape it however it wants.
++ */
++extern "C" void js_emit_audio(const int16_t* stream, int byte_len, int sample_rate) {
++	/* Static scratch — MIXER_CallBack is invoked from a single producer
++	 * (the SDL audio thread under native builds; the emcc SDL1 port runs
++	 * it on the main thread, also single-threaded). 16 KiB is large enough
++	 * for any reasonable mixer.blocksize at any sample rate we ship. */
++	static float scratch[16384];
++	int frames = byte_len / (int)(sizeof(int16_t) * 2); /* stereo frames */
++	int floats = frames * 2;
++	if (floats <= 0) return;
++	if (floats > (int)(sizeof(scratch) / sizeof(scratch[0]))) {
++		floats = (int)(sizeof(scratch) / sizeof(scratch[0]));
++	}
++	const float inv = 1.0f / 32768.0f;
++	for (int i = 0; i < floats; ++i) {
++		scratch[i] = (float)stream[i] * inv;
++	}
++	js_on_audio(scratch, floats, sample_rate);
++}
++
++/* ------------------------------------------------------------------------
++ * Input + lifecycle exports
++ *
++ * These four `_send_*` / `_exit_*` symbols are listed in
++ * EXPORTED_FUNCTIONS in src/Makefile.am (this patch updates that list).
++ * The JS wrapper calls them via Module.ccall(...).
++ *
++ * Input model: we synthesise an SDL_Event and push it onto SDL's queue. The
++ * existing GFX_Events() pump in this file (called once per Normal_Loop tick
++ * from src/dosbox.cpp) drains the queue and dispatches keys via the mapper
++ * and mouse motion/buttons via HandleMouse{Motion,Button}. No new dispatch
++ * path is needed — we deliberately mirror what a native SDL build sees from
++ * the OS event source.
++ *
++ * Keycode is the raw SDLKey value (SDLK_*); the JS-side keymap is responsible
++ * for translating browser KeyboardEvent.code into the SDL1 numeric constants.
++ *
++ * exit_dosbox() pushes SDL_QUIT; the GFX_Events loop catches that and
++ * throws(0), which unwinds main() and lets emscripten teardown happen
++ * naturally (Asyncify pauses don't unwind, so we have to take the SDL path).
++ * ------------------------------------------------------------------------ */
++
++extern "C" {
++
++EMSCRIPTEN_KEEPALIVE void send_key(int keycode, int down) {
++	SDL_Event ev;
++	memset(&ev, 0, sizeof(ev));
++	ev.type = down ? SDL_KEYDOWN : SDL_KEYUP;
++	ev.key.type = ev.type;
++	ev.key.state = down ? SDL_PRESSED : SDL_RELEASED;
++	ev.key.keysym.sym = (SDLKey)keycode;
++	ev.key.keysym.scancode = (SDL_Scancode)keycode; /* best-effort; mapper uses sym */
++	SDL_PushEvent(&ev);
++}
++
++EMSCRIPTEN_KEEPALIVE void send_mouse_motion(int x, int y) {
++	SDL_Event ev;
++	memset(&ev, 0, sizeof(ev));
++	ev.type = SDL_MOUSEMOTION;
++	ev.motion.type = SDL_MOUSEMOTION;
++	ev.motion.x = (Uint16)x;
++	ev.motion.y = (Uint16)y;
++	SDL_PushEvent(&ev);
++}
++
++EMSCRIPTEN_KEEPALIVE void send_mouse_button(int button, int pressed) {
++	SDL_Event ev;
++	memset(&ev, 0, sizeof(ev));
++	ev.type = pressed ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
++	ev.button.type = ev.type;
++	ev.button.button = (Uint8)button;
++	ev.button.state = pressed ? SDL_PRESSED : SDL_RELEASED;
++	SDL_PushEvent(&ev);
++}
++
++EMSCRIPTEN_KEEPALIVE void exit_dosbox(void) {
++	SDL_Event ev;
++	memset(&ev, 0, sizeof(ev));
++	ev.type = SDL_QUIT;
++	SDL_PushEvent(&ev);
++}
++
++} /* extern "C" */
++#endif /* JSDOS */
++
++
+ #if C_OPENGL
+ #include "SDL_opengl.h"
+ 
+@@ -954,6 +1091,24 @@
+ 	default:
+ 		break;
+ 	}
++#ifdef JSDOS
++	/* Notify JS that a frame is ready. We're called *after* the per-backend
++	 * SDL_Flip / SDL_UpdateRects above, so sdl.surface->pixels points at the
++	 * final composited framebuffer. The JS side is expected to copy out of
++	 * the HEAPU8 view before yielding back — DOSBox will scribble over this
++	 * buffer on the next render pass.
++	 *
++	 * Only SCREEN_SURFACE is meaningful under emscripten (SCREEN_OPENGL needs
++	 * a desktop GL context; SDL_overlay is a YUV path). We early-out for the
++	 * others to avoid handing JS a stale or empty buffer.
++	 */
++	if (sdl.desktop.type == SCREEN_SURFACE && sdl.surface && sdl.surface->pixels) {
++		js_on_frame((const uint8_t*)sdl.surface->pixels,
++		            sdl.surface->w,
++		            sdl.surface->h,
++		            sdl.surface->pitch);
++	}
++#endif
+ }
+ 
+ 
+diff -urN a/src/hardware/mixer.cpp b/src/hardware/mixer.cpp
+--- a/src/hardware/mixer.cpp	2019-05-03 02:01:17
++++ b/src/hardware/mixer.cpp	2026-05-20 11:21:37
+@@ -41,6 +41,16 @@
+ #include "pic.h"
+ #include "dosbox.h"
+ #include "mixer.h"
++#ifdef JSDOS
++/* Bridge to the JS audio worklet — js_emit_audio() lives in sdlmain.cpp's
++ * JSDOS block (where the EM_JS callback definitions are). Declared extern
++ * here to avoid pulling another header into the native build. The function
++ * converts int16 stereo (AUDIO_S16SYS) to interleaved float32 and forwards
++ * to Module.onAudio.
++ */
++#include <stdint.h>
++extern "C" void js_emit_audio(const int16_t* stream, int byte_len, int sample_rate);
++#endif
+ #include "timer.h"
+ #include "setup.h"
+ #include "cross.h"
+@@ -412,6 +422,12 @@
+ }
+ 
+ static void SDLCALL MIXER_CallBack(void * userdata, Uint8 *stream, int len) {
++#ifdef JSDOS
++	/* Snapshot the buffer start before `output` is advanced by the mix loop
++	 * below — js_emit_audio() needs the head pointer at function exit. */
++	Bit16s * const js_audio_buf_start = (Bit16s *)stream;
++	const int js_audio_buf_len = len;
++#endif
+ 	Bitu need=(Bitu)len/MIXER_SSIZE;
+ 	Bit16s * output=(Bit16s *)stream;
+ 	Bitu reduce;
+@@ -514,6 +530,14 @@
+ 			pos++;
+ 		}
+ 	}
++#ifdef JSDOS
++	/* Hand the freshly-filled int16 buffer to the JS worklet. The helper
++	 * lives in sdlmain.cpp; see its docstring for the conversion strategy.
++	 * Note: under emcc we still leave the SDL_OpenAudio path active so the
++	 * mixer's own pacing (tick_add/min_needed math above) keeps working —
++	 * this is purely a fan-out. */
++	js_emit_audio(js_audio_buf_start, js_audio_buf_len, (int)mixer.freq);
++#endif
+ }
+ 
+ static void MIXER_Stop(Section* sec) {

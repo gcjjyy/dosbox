@@ -1,0 +1,95 @@
+diff -urN a/src/gui/sdlmain.cpp b/src/gui/sdlmain.cpp
+--- a/src/gui/sdlmain.cpp	2026-05-20 11:33:51
++++ b/src/gui/sdlmain.cpp	2026-05-20 11:34:38
+@@ -474,7 +474,13 @@
+ 	}
+ 
+ 	while (paused) {
++#if defined(JSDOS)
++		// emscripten SDL1 has no SDL_WaitEvent; poll non-blocking instead.
++		SDL_Delay(1);
++		SDL_PollEvent(&event);
++#else
+ 		SDL_WaitEvent(&event);    // since we're not polling, cpu usage drops to 0.
++#endif
+ 		switch (event.type) {
+ 
+ 			case SDL_QUIT: KillSwitch(true); break;
+@@ -771,6 +777,10 @@
+ 		break;
+ #endif
+ 	case SCREEN_OVERLAY:
++#if defined(JSDOS)
++		// emscripten SDL1 has no YUV overlay; SCREEN_OVERLAY is dead in this build.
++		goto dosurface;
++#else
+ 		if (sdl.overlay) {
+ 			SDL_FreeYUVOverlay(sdl.overlay);
+ 			sdl.overlay=0;
+@@ -785,6 +795,7 @@
+ 		sdl.desktop.type=SCREEN_OVERLAY;
+ 		retFlags = GFX_CAN_32 | GFX_SCALING | GFX_HARDWARE;
+ 		break;
++#endif
+ #if C_OPENGL
+ 	case SCREEN_OPENGL:
+ 	{
+@@ -963,11 +974,16 @@
+ 		return true;
+ #endif
+ 	case SCREEN_OVERLAY:
++#if defined(JSDOS)
++		// emscripten SDL1 has no YUV overlay; SCREEN_OVERLAY is dead in this build.
++		return false;
++#else
+ 		if (SDL_LockYUVOverlay(sdl.overlay)) return false;
+ 		pixels=(Bit8u *)*(sdl.overlay->pixels);
+ 		pitch=*(sdl.overlay->pitches);
+ 		sdl.updating=true;
+ 		return true;
++#endif
+ #if C_OPENGL
+ 	case SCREEN_OPENGL:
+ 		if(sdl.opengl.pixel_buffer_object) {
+@@ -1049,9 +1065,14 @@
+ 		break;
+ #endif
+ 	case SCREEN_OVERLAY:
++#if defined(JSDOS)
++		// emscripten SDL1 has no YUV overlay; SCREEN_OVERLAY is dead in this build.
++		break;
++#else
+ 		SDL_UnlockYUVOverlay(sdl.overlay);
+ 		SDL_DisplayYUVOverlay(sdl.overlay,&sdl.clip);
+ 		break;
++#endif
+ #if C_OPENGL
+ 	case SCREEN_OPENGL:
+ 		// Clear drawing area. Some drivers (on Linux) have more than 2 buffers and the screen might
+@@ -1373,7 +1394,12 @@
+ 		sdl.desktop.want_type=SCREEN_SURFACE_DDRAW;
+ #endif
+ 	} else if (output == "overlay") {
++#if defined(JSDOS)
++		// emscripten SDL1 has no YUV overlay; never select the dead overlay path.
++		sdl.desktop.want_type=SCREEN_SURFACE;
++#else
+ 		sdl.desktop.want_type=SCREEN_OVERLAY;
++#endif
+ #if C_OPENGL
+ 	} else if (output == "opengl") {
+ 		sdl.desktop.want_type=SCREEN_OPENGL;
+@@ -1680,7 +1706,13 @@
+ 
+ 					while (paused) {
+ 						// WaitEvent waits for an event rather than polling, so CPU usage drops to zero
++#if defined(JSDOS)
++						// emscripten SDL1 has no SDL_WaitEvent; poll non-blocking instead.
++						SDL_Delay(1);
++						SDL_PollEvent(&ev);
++#else
+ 						SDL_WaitEvent(&ev);
++#endif
+ 
+ 						switch (ev.type) {
+ 						case SDL_QUIT: throw(0); break; // a bit redundant at linux at least as the active events gets before the quit event.

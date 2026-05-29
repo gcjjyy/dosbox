@@ -1,0 +1,38 @@
+--- a/src/dosbox.cpp
++++ b/src/dosbox.cpp
+@@ -23,6 +23,16 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <unistd.h>
++#ifdef JSDOS
++/* Asyncify: emscripten_sleep() lets the C++ main loop yield to the JS event
++ * loop so the browser can repaint, deliver input events, and feed audio.
++ * jsdos throttles this path to roughly 24ms; yielding on every CPU loop makes
++ * DOSBox run too slowly and causes audio to stretch under graphics-heavy apps.
++ * Full Asyncify is used because DOSBox's C++ symbols are aggressively renamed
++ * under thin LTO; the kept list is only a reference for future tuning.
++ */
++#include <emscripten.h>
++#endif
+ #include "dosbox.h"
+ #include "debug.h"
+ #include "cpu.h"
+@@ -129,6 +139,18 @@
+ static Bitu Normal_Loop(void) {
+ 	Bits ret;
+ 	while (1) {
++#ifdef JSDOS
++		/* Match jsdos' asyncify pacing: let DOSBox run normally between browser
++		 * yields, but never monopolise the main thread for long enough to freeze
++		 * CSS animation, input, or audio scheduling.
++		 */
++		static double last_wakeup = 0.0;
++		const double now = emscripten_get_now();
++		if (now - last_wakeup >= 24.0) {
++			last_wakeup = now;
++			emscripten_sleep(0);
++		}
++#endif
+ 		if (PIC_RunQueue()) {
+ 			ret = (*cpudecoder)();
+ 			if (GCC_UNLIKELY(ret<0)) return 1;

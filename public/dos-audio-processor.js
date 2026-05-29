@@ -6,10 +6,10 @@ class DosAudioProcessor extends AudioWorkletProcessor {
     super();
     this._queue = [];
     this._queuedFrames = 0;
-    this._channels = 2;
+    this._channels = 1;
     this._primed = false;
-    this._primeFrames = 1024;
-    this._maxFrames = 4096;
+    this._primeFrames = 2048;
+    this._maxFrames = 6144;
 
     this.port.onmessage = (event) => {
       const data = event.data;

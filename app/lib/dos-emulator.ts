@@ -142,6 +142,15 @@ function resampleInterleaved(input: Float32Array, channels: number, ratio: numbe
   return out;
 }
 
+function downmixStereoToMono(input: Float32Array): Float32Array {
+  const frames = Math.floor(input.length / 2);
+  const out = new Float32Array(frames);
+  for (let i = 0, j = 0; i < frames; i++, j += 2) {
+    out[i] = ((input[j] ?? 0) + (input[j + 1] ?? 0)) * 0.5;
+  }
+  return out;
+}
+
 function loadDosboxFactory(): Promise<DosboxFactory> {
   if (window.createDosbox) return Promise.resolve(window.createDosbox);
   if (!dosboxFactoryPromise) {
@@ -450,7 +459,7 @@ export class DosEmulator {
       canvas: this.canvas,
       noInitialRun: true,
       noExitRuntime: true,
-      SDL_numSimultaneouslyQueuedBuffers: 2,
+      SDL_numSimultaneouslyQueuedBuffers: 3,
       webgl2DPresentation: false,
       canvas2DContextAttributes: {
         alpha: false,
@@ -678,13 +687,13 @@ export class DosEmulator {
 
   private handleAudio(module: DosboxModule, ptr: number, samples: number, rate: number): void {
     if (rate > 0) this.audioSourceRate = rate;
-    const channels = samples > 1 && samples % 2 === 0 ? 2 : 1;
-    this.audioChannels = channels;
-    const totalSamples = Math.floor(samples / channels) * channels;
+    const sourceChannels = samples > 1 && samples % 2 === 0 ? 2 : 1;
+    this.audioChannels = 1;
+    const totalSamples = Math.floor(samples / sourceChannels) * sourceChannels;
     if (totalSamples <= 0) return;
     const start = ptr >> 2;
     const copy = new Float32Array(module.HEAPF32.subarray(start, start + totalSamples));
-    this.pushAudio(copy, channels);
+    this.pushAudio(sourceChannels === 2 ? downmixStereoToMono(copy) : copy, 1);
   }
 
   private setupAudioUnlock(): void {
