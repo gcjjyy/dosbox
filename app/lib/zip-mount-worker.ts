@@ -16,8 +16,8 @@ interface WorkerSelf {
 }
 
 const CHUNK_SIZE = 256 * 1024;
-const MAX_BATCH_BYTES = 4 * 1024 * 1024;
-const MAX_BATCH_FILES = 64;
+const MAX_BATCH_BYTES = 512 * 1024;
+const MAX_BATCH_FILES = 16;
 
 const workerSelf = self as unknown as WorkerSelf;
 const ackResolvers = new Map<string, () => void>();

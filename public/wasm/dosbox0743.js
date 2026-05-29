@@ -742,7 +742,7 @@ function js_on_audio(samples,n_samples,sample_rate) { if (Module["onAudio"]) Mod
         antialias: false,
         depth: false,
         stencil: false,
-        preserveDrawingBuffer: false,
+        preserveDrawingBuffer: true,
         powerPreference: 'low-power',
       });
       if (!gl) return null;

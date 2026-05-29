@@ -48,6 +48,11 @@ interface DosboxModule {
   FS: DosboxFS;
   HEAPF32: Float32Array;
   SDL?: {
+    defaults?: {
+      copyOnLock?: boolean;
+      discardOnLock?: boolean;
+      opaqueFrontBuffer?: boolean;
+    };
     audioContext?: AudioContext;
     openAudioContext?: () => void;
     audio?: {
@@ -462,6 +467,11 @@ export class DosEmulator {
     if (this.exiting) return;
     this.module = module;
     this.opts.onRuntimeReady?.();
+    if (module.SDL?.defaults) {
+      module.SDL.defaults.copyOnLock = false;
+      module.SDL.defaults.discardOnLock = true;
+      module.SDL.defaults.opaqueFrontBuffer = true;
+    }
 
     await this.mountDrive(module, this.opts.bundle, 0, 0.8);
     if (this.exiting) return;
@@ -582,8 +592,9 @@ export class DosEmulator {
             if (slash > 0) this.ensureDir(module, dest.slice(0, slash));
             module.FS.writeFile(dest, data);
             this.baseline.set(rel, baseline.get(rel) ?? { size: data.length, crc: crc32(data) });
-            if (idx % 16 === 15) await yieldToBrowser();
+            if (idx % 4 === 3) await yieldToBrowser();
           }
+          await yieldToBrowser();
           worker.postMessage({ type: "ack", id, seq: msg.seq });
         } catch (err) {
           finish(err);
