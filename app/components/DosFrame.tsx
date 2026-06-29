@@ -76,6 +76,72 @@ async function streamBundle(
   return out;
 }
 
+// Persistent bundle cache. The DOS zip is ~100 MB — too large for the browser
+// HTTP disk cache to retain reliably (Chrome/Firefox evict very large entries
+// even when the response is marked immutable), so it re-downloads on every
+// boot. We store it ourselves in the Cache Storage API, keyed by the versioned
+// URL, which lives in the origin's persistent storage quota and survives
+// reloads. On a version bump the ?v= URL changes; we fetch the new one and
+// prune the stale entry. Caching is best-effort — any failure (no Cache
+// Storage on insecure origins, quota exceeded) falls back to a plain download.
+const BUNDLE_CACHE = "dos-bundle-v1";
+
+async function openBundleCache(): Promise<Cache | null> {
+  try {
+    if (typeof caches === "undefined") return null;
+    return await caches.open(BUNDLE_CACHE);
+  } catch {
+    return null;
+  }
+}
+
+async function streamBundleCached(
+  url: string,
+  signal: AbortSignal,
+  onDownload: (fraction: number) => void,
+): Promise<Uint8Array> {
+  const cache = await openBundleCache();
+
+  // Cache hit: serve the stored bytes locally — no network round-trip.
+  if (cache) {
+    try {
+      const hit = await cache.match(url);
+      if (hit) {
+        const buf = new Uint8Array(await hit.arrayBuffer());
+        onDownload(1);
+        return buf;
+      }
+    } catch {
+      // Corrupt/unreadable entry — fall through and re-download.
+    }
+  }
+
+  // Miss: download over the network with progress, then persist for next boot.
+  const bytes = await streamBundle(url, signal, onDownload);
+  if (cache) {
+    try {
+      const current = new Request(url).url;
+      await cache.put(
+        current,
+        new Response(bytes as BodyInit, {
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": String(bytes.length),
+          },
+        }),
+      );
+      // The cache is dedicated to this bundle, so drop every other entry —
+      // these are stale ?v= versions from earlier builds.
+      for (const req of await cache.keys()) {
+        if (req.url !== current) await cache.delete(req);
+      }
+    } catch {
+      // Quota or storage failure — caching is best-effort, ignore.
+    }
+  }
+  return bytes;
+}
+
 async function fetchText(url: string, signal: AbortSignal): Promise<string> {
   const r = await fetch(url, { signal });
   if (!r.ok) throw new Error(`config fetch failed: ${r.status}`);
@@ -200,7 +266,7 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
       let bundle: Uint8Array;
       try {
         setPhaseProgress("download", 0);
-        bundle = await streamBundle(bundleUrl, ac.signal, (f) => setPhaseProgress("download", f));
+        bundle = await streamBundleCached(bundleUrl, ac.signal, (f) => setPhaseProgress("download", f));
       } catch (err) {
         failBoot(err);
         return;
