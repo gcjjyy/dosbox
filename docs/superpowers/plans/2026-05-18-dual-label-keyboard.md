@@ -362,7 +362,7 @@ Follow the procedure in `~/.claude/projects/-Users-gcjjyy-dosbox/memory/referenc
 
 ```bash
 sshpass -p '<password>' ssh pcnhost \
-  'cd ~/dosbox && git pull --ff-only origin main && npm run build && pm2 restart dosbox && pm2 status dosbox'
+  'cd ~/lab/dosbox && git pull --ff-only origin main && npm run build && pm2 restart dosbox && pm2 status dosbox'
 ```
 
 Expected: `pm2 status dosbox` shows `online` with the new version.

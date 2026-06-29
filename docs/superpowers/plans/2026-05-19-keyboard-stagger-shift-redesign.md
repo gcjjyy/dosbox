@@ -899,7 +899,7 @@ git push origin main
 User runs (password not persisted):
 
 ```bash
-sshpass -p '<password>' ssh pcnhost 'cd ~/dosbox && git fetch origin && git reset --hard origin/main && npm run build && pm2 restart dosbox && pm2 status dosbox'
+sshpass -p '<password>' ssh pcnhost 'cd ~/lab/dosbox && git fetch origin && git reset --hard origin/main && npm run build && pm2 restart dosbox && pm2 status dosbox'
 ```
 
 Expected: `pm2 status dosbox` shows `online` with a fresh uptime and a bumped `version` column (each commit triggered the pre-commit hook patch bump).

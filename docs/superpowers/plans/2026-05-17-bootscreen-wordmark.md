@@ -97,7 +97,7 @@ git commit -m "feat(ui): BootScreen wordmark = DOSBOX_ (toolbar parity); drop fo
 git push origin main
 
 sshpass -p '<password>' ssh pcnhost \
-  'cd ~/dosbox && git pull --ff-only origin main && npm run build && pm2 restart dosbox && pm2 status dosbox'
+  'cd ~/lab/dosbox && git pull --ff-only origin main && npm run build && pm2 restart dosbox && pm2 status dosbox'
 ```
 
 Expected: pm2 shows `dosbox` version `1.0.27`, status online.

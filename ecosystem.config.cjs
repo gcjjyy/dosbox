@@ -29,7 +29,7 @@ module.exports = {
       name: "dosbox",
       script: "node_modules/.bin/react-router-serve",
       args: "./build/server/index.js",
-      cwd: "/home/gcjjyy/dosbox",
+      cwd: "/home/gcjjyy/lab/dosbox",
       env: {
         NODE_ENV: "production",
         ...envFromFile,
