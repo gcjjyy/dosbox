@@ -158,10 +158,43 @@ export function getDosboxConfEtag(): string {
   return `"${createHash("sha256").update(DOSBOX_CONF).digest("hex").slice(0, 32)}"`;
 }
 
+// Public base URL the bundle is served from (behind Cloudflare). When set,
+// rebuildBundle() fetches the freshly built ?v= URL once so Cloudflare's edge
+// caches it before real users arrive — converting the slow first-visit (origin
+// pull) into a controlled background warm.
+function publicBaseUrl(): string | null {
+  const v = process.env.PUBLIC_BASE_URL;
+  return v ? v.replace(/\/+$/, "") : null;
+}
+
+export function prewarmUrl(base: string, version: string): string {
+  return `${base.replace(/\/+$/, "")}/dos.zip?v=${encodeURIComponent(version)}`;
+}
+
+// Fetch the versioned bundle URL through the public hostname so Cloudflare
+// ingests and caches it. Best-effort: failures are logged and ignored.
+export async function prewarmBundle(version: string): Promise<void> {
+  const base = publicBaseUrl();
+  if (!base) return;
+  const url = prewarmUrl(base, version);
+  try {
+    const res = await fetch(url, { headers: { "x-prewarm": "dosbox" } });
+    // Drain the body fully — Cloudflare only caches the object once the whole
+    // response has been read through the edge.
+    await res.arrayBuffer();
+    console.log(
+      `[bundle] prewarm ${url} -> ${res.status} cf-cache-status=${res.headers.get("cf-cache-status") ?? "?"}`,
+    );
+  } catch (err) {
+    console.error("[bundle] prewarm failed:", err);
+  }
+}
+
 let inFlight: Promise<string> | null = null;
 
-export async function rebuildBundle(): Promise<string> {
+export async function rebuildBundle(opts?: { prewarm?: boolean }): Promise<string> {
   if (inFlight) return inFlight;
+  const shouldPrewarm = opts?.prewarm ?? true;
   inFlight = (async () => {
     const dir = cacheDir();
     await fs.mkdir(dir, { recursive: true });
@@ -185,6 +218,9 @@ export async function rebuildBundle(): Promise<string> {
     const realEtag = `"${etag.slice(1, -1)}-${zipStat.mtimeMs.toString(36)}-${zipStat.size}"`;
     await fs.writeFile(etagPath(), realEtag);
     await fs.writeFile(formatPath(), BUNDLE_FORMAT_VERSION);
+    // Warm Cloudflare for the new version out of band so the admin save request
+    // (which awaits rebuildBundle) is not blocked by the warm fetch.
+    if (shouldPrewarm) void prewarmBundle(bundleVersionFromEtag(realEtag));
     return realEtag;
   })();
   try { return await inFlight; } finally { inFlight = null; }
