@@ -10,6 +10,15 @@ runtime in `public/wasm/`. Public visitors can play read-only. A shared admin
 password unlocks server-side saves back into `DOS_ROOT`, and each browser also
 has a localStorage save overlay.
 
+## Project Structure & Module Organization
+
+This is a React Router v7 SSR TypeScript app that runs a self-built DOSBox
+0.74-3 WebAssembly runtime in the browser. UI lives in `app/components/`, routes
+in `app/routes/`, and shared logic in `app/lib/`. Static runtime assets are in
+`public/`, including `public/wasm/dosbox0743.{js,wasm}` and the audio worklet.
+Tests sit beside code as `*.test.ts`, mostly under `app/lib/`. Node `>=20` is
+required.
+
 ## Commands
 
 ```bash
@@ -69,6 +78,31 @@ rebuilds the server bundle. User save stores the same ZIP in localStorage and
 layers it over `/c` at the next boot. Deletions are not represented as a diff;
 the current save model persists changed or created files.
 
+## Coding Style & Naming Conventions
+
+Use strict TypeScript and React function components. Match local style:
+two-space indentation, semicolons, named exports for shared helpers, and
+descriptive camelCase identifiers. Use the `~/*` alias for `app/*` imports.
+Keep server-only code in `*.server.ts` modules and out of client components.
+Route types come from generated `./+types/<route>` modules.
+
+## Testing Guidelines
+
+Vitest is the test runner. Add focused tests beside changed logic using the
+existing `*.test.ts` pattern, for example `app/lib/bundle.test.ts`. Prefer small
+unit tests for path safety, payload validation, key mapping, options, and
+bundle behavior. Run `npm run test`; run `npm run typecheck` after route or
+import changes.
+
+## Commit & Pull Request Guidelines
+
+Recent commits use Conventional Commit style with scopes, such as
+`fix(dosbox): ...`, `feat(vkb): ...`, and `chore(scripts): ...`. Keep messages
+imperative and specific. Pull requests should describe the user-visible change,
+note tests run, link related issues or docs, and include screenshots for UI
+changes. If you manually bump `package.json`, the pre-commit hook should skip
+its own patch bump.
+
 ## Input Notes
 
 `DOSBOX_CONF` sets `[sdl] usescancodes=false` because the browser SDL layer does
@@ -83,7 +117,7 @@ nginx proxy config in `nginx/dosbox.gcjjyy.dev.conf`. Standard deploy on
 `pcnhost`:
 
 ```bash
-cd ~/dosbox
+cd ~/lab/dosbox
 git fetch origin
 git reset --hard origin/main
 npm install
