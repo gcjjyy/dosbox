@@ -25,9 +25,48 @@ html, body {
   color: var(--color-navy-text);
   font-family: var(--font-sans);
   font-feature-settings: "ss01", "cv11";
+  min-height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 html { color-scheme: dark; }
+
+:root {
+  --app-viewport-height: 100vh;
+  --app-viewport-offset-top: 0px;
+}
+
+@supports (height: 100svh) {
+  :root { --app-viewport-height: 100svh; }
+}
+
+@supports (height: 100dvh) {
+  :root { --app-viewport-height: 100dvh; }
+}
+
+/* ── App shell ───────────────────────────────────────────────────── */
+
+.app-shell {
+  position: fixed;
+  top: var(--app-viewport-offset-top);
+  left: 0;
+  right: 0;
+  width: 100vw;
+  height: var(--app-viewport-height);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  color: var(--color-navy-text);
+}
+.app-shell--keyboard {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.app-main {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
 
 /* ── Boot overlay ─────────────────────────────────────────────────── */
 
@@ -269,6 +308,7 @@ html { color-scheme: dark; }
   position: relative;
   width: 100%;
   height: 100%;
+  min-height: 0;
   display: grid;
   justify-items: center;
   align-items: center;
@@ -901,7 +941,7 @@ html { color-scheme: dark; }
     margin-inline: 0;
     /* Tighter side padding + wider row spacing: keys gain horizontal room
        (좌우 ↓) while rows breathe a little more vertically (상하 ↑). */
-    padding: 6px 2px;
+    padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
     gap: 6px;
     border-radius: 0;
     border-left: 0;

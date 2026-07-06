@@ -10,6 +10,7 @@ import { VirtualKeyboard } from "../components/VirtualKeyboard";
 import { resolutionById } from "../components/ResolutionPicker";
 import { OptionsDialog } from "../components/OptionsDialog";
 import { useVirtualKeyboard } from "../lib/use-virtual-keyboard";
+import { useVisualViewportCssVars } from "../lib/use-visual-viewport";
 import { useUserState } from "../lib/use-user-state";
 import { clearUserState, writeUserState } from "../lib/user-state";
 import { saveToServer } from "../lib/save";
@@ -42,6 +43,8 @@ function isDesktopChrome(): boolean {
 }
 
 export default function Index({ loaderData }: Route.ComponentProps) {
+  useVisualViewportCssVars();
+
   const ciRef = useRef<CommandInterface | null>(null);
   const emulatorRef = useRef<DosEmulator | null>(null);
   const [showLogin, setShowLogin] = useState(false);
@@ -203,7 +206,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
   }, []);
 
   return (
-    <div className="grid h-dvh grid-rows-[auto_1fr] text-gray-100">
+    <div className={`app-shell${vkbVisible ? " app-shell--keyboard" : ""}`}>
       <Toolbar
         isAdmin={loaderData.isAdmin}
         saving={saving}
@@ -218,7 +221,7 @@ export default function Index({ loaderData }: Route.ComponentProps) {
         onLogout={logout}
         onSave={checkAndSave}
       />
-      <main className="relative">
+      <main className="app-main">
         {optionsReady && (
           <DosFrame
             bundleUrl={loaderData.bundleUrl}

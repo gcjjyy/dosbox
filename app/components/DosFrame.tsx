@@ -1,9 +1,10 @@
 // app/components/DosFrame.tsx
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { unzipSync } from "fflate";
 import { DosEmulator, preloadDosboxRuntime, type CommandInterface } from "../lib/dos-emulator";
 import { BootScreen, type BootPhase } from "./BootScreen";
 import { clearUserState, readUserState } from "../lib/user-state";
+import { containWithin, type Size } from "../lib/viewport-layout";
 
 export type { CommandInterface };
 export type { DosEmulator };
@@ -166,6 +167,18 @@ function readValidUserState(): Uint8Array | null {
   }
 }
 
+function useNarrowViewport(): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 640px)");
+    const update = () => setMatches(mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
+  return matches;
+}
+
 export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, width, height, vAlign = "middle", canvasOverlay }: DosFrameProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const ref = useRef<HTMLCanvasElement | null>(null);
@@ -174,7 +187,57 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
   const [phase, setPhase] = useState<BootPhase>("wait");
   const [bootMessage, setBootMessage] = useState<string | null>(null);
   const [overlayPos, setOverlayPos] = useState({ left: 16, top: 16 });
+  const [stageSize, setStageSize] = useState<Size | null>(null);
+  const [frameSize, setFrameSize] = useState<Size | null>(null);
   const fixedSize = width != null && height != null;
+  const narrowViewport = useNarrowViewport();
+  const sourceSize = fixedSize ? { width, height } : frameSize;
+  const shouldContain = Boolean(sourceSize && stageSize && (!fixedSize || narrowViewport));
+  const containedSize = shouldContain && sourceSize && stageSize
+    ? containWithin({
+        source: sourceSize,
+        bounds: stageSize,
+        maxScale: fixedSize ? 1 : undefined,
+      })
+    : null;
+  const displaySize = containedSize && containedSize.width > 0 && containedSize.height > 0
+    ? containedSize
+    : fixedSize
+      ? { width, height }
+      : null;
+  const canvasStyle = displaySize
+    ? {
+        "--dos-canvas-width": `${displaySize.width}px`,
+        "--dos-canvas-height": `${displaySize.height}px`,
+        width: `var(--dos-canvas-width, ${fixedSize ? `${width}px` : "100%"})`,
+        height: `var(--dos-canvas-height, ${fixedSize ? `${height}px` : "100%"})`,
+      } as CSSProperties
+    : undefined;
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const update = () => {
+      const rect = stage.getBoundingClientRect();
+      const next = {
+        width: Math.max(0, rect.width),
+        height: Math.max(0, rect.height),
+      };
+      setStageSize((prev) => (
+        prev && prev.width === next.width && prev.height === next.height ? prev : next
+      ));
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(stage);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const stage = stageRef.current;
@@ -204,11 +267,11 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
     const canvas = ref.current;
     if (!canvas) return;
     if (fixedSize) {
-      canvas.style.setProperty("width", `${width}px`, "important");
-      canvas.style.setProperty("height", `${height}px`, "important");
+      canvas.style.setProperty("width", `var(--dos-canvas-width, ${width}px)`, "important");
+      canvas.style.setProperty("height", `var(--dos-canvas-height, ${height}px)`, "important");
     } else {
-      canvas.style.setProperty("width", "100%", "important");
-      canvas.style.setProperty("height", "100%", "important");
+      canvas.style.setProperty("width", "var(--dos-canvas-width, 100%)", "important");
+      canvas.style.setProperty("height", "var(--dos-canvas-height, 100%)", "important");
     }
   }, [fixedSize, width, height]);
 
@@ -316,6 +379,14 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
         onFirstFrame: () => {
           setPhaseProgress("boot", 1);
         },
+        onFrameSize: (frameWidth, frameHeight) => {
+          if (cancelled) return;
+          setFrameSize((prev) => (
+            prev && prev.width === frameWidth && prev.height === frameHeight
+              ? prev
+              : { width: frameWidth, height: frameHeight }
+          ));
+        },
         onError: failBoot,
       });
       onEmulator?.(emulator);
@@ -338,7 +409,7 @@ export function DosFrame({ bundleUrl, configUrl, onReady, onError, onEmulator, w
         ref={ref}
         tabIndex={0}
         className={fixedSize ? "dos-canvas dos-canvas--fixed" : "dos-canvas dos-canvas--fill"}
-        style={fixedSize ? { width: `${width}px`, height: `${height}px` } : undefined}
+        style={canvasStyle}
       />
       {canvasOverlay && (
         <div className="audio-unlock" style={{ left: `${overlayPos.left}px`, top: `${overlayPos.top}px` }}>

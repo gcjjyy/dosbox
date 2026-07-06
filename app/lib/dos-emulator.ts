@@ -7,6 +7,7 @@
 import { unzipSync, zipSync } from "fflate";
 import { version } from "../../package.json";
 import { PROCESSOR_NAME, WORKLET_URL } from "./dos-audio-worklet";
+import { SingleFlight } from "./single-flight";
 
 const RUNTIME_VERSION = encodeURIComponent(version);
 const DOSBOX_SCRIPT_URL = `/wasm/dosbox0743.js?v=${RUNTIME_VERSION}`;
@@ -394,6 +395,7 @@ export interface DosEmulatorOpts {
   overlay?: Uint8Array | null;
   onReady?: (ci: CommandInterface) => void;
   onFirstFrame?: () => void;
+  onFrameSize?: (width: number, height: number) => void;
   onBeforeStart?: () => void | Promise<void>;
   onError?: (err: unknown) => void;
   onRuntimeReady?: () => void;
@@ -408,8 +410,8 @@ export class DosEmulator {
   private events = new EventHub();
   private audioCtx: AudioContext | null = null;
   private audioNode: AudioWorkletNode | null = null;
+  private audioUnlockFlight = new SingleFlight<boolean>();
   private audioSourceRate = AUDIO_RATE;
-  private audioUnlocking = false;
   private audioChannels = 2;
   private resampleRatio = 1;
   private firstFrame = false;
@@ -679,6 +681,7 @@ export class DosEmulator {
       this.frameWidth = width;
       this.frameHeight = height;
       this.events.emitFrameSize(width, height);
+      this.opts.onFrameSize?.(width, height);
     }
     this.applyDisplaySize();
     this.events.emitFrame();
@@ -771,16 +774,14 @@ export class DosEmulator {
   }
 
   async unlockAudio(): Promise<boolean> {
+    return this.audioUnlockFlight.run(() => this.performAudioUnlock());
+  }
+
+  private async performAudioUnlock(): Promise<boolean> {
     if (this.exiting) return false;
     this.focusCanvas();
     if (!this.audioCtx) {
-      if (this.audioUnlocking) return false;
-      this.audioUnlocking = true;
-      try {
-        await this.setupAudio(this.audioSourceRate || AUDIO_RATE);
-      } finally {
-        this.audioUnlocking = false;
-      }
+      await this.setupAudio(this.audioSourceRate || AUDIO_RATE);
     } else if (this.audioCtx.state !== "running" && this.audioCtx.state !== "closed") {
       void this.audioCtx.resume().catch(() => undefined);
     }
@@ -808,11 +809,11 @@ export class DosEmulator {
     const width = this.opts.displayWidth;
     const height = this.opts.displayHeight;
     if (width != null && height != null) {
-      this.canvas.style.setProperty("width", `${width}px`, "important");
-      this.canvas.style.setProperty("height", `${height}px`, "important");
+      this.canvas.style.setProperty("width", `var(--dos-canvas-width, ${width}px)`, "important");
+      this.canvas.style.setProperty("height", `var(--dos-canvas-height, ${height}px)`, "important");
     } else {
-      this.canvas.style.setProperty("width", "100%", "important");
-      this.canvas.style.setProperty("height", "100%", "important");
+      this.canvas.style.setProperty("width", "var(--dos-canvas-width, 100%)", "important");
+      this.canvas.style.setProperty("height", "var(--dos-canvas-height, 100%)", "important");
     }
   }
 
