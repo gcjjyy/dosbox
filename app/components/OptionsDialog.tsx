@@ -1,4 +1,5 @@
 import { Minus, Plus, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { ResolutionPicker, type ResolutionId } from "./ResolutionPicker";
 import { CYCLES_MIN, CYCLES_MAX } from "../lib/cpu-cycles";
 import type { CanvasVAlign } from "../lib/options";
@@ -36,12 +37,20 @@ export function OptionsDialog({
   keyboardOpacity,
   onKeyboardOpacityChange,
 }: OptionsDialogProps) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus({ preventScroll: true });
+  }, []);
+
   return (
     <div className="opt-overlay" onClick={onClose}>
       <div
+        ref={dialogRef}
         className="opt-dialog"
         role="dialog"
         aria-label="설정"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="opt-header">

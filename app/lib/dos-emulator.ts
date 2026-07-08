@@ -6,6 +6,7 @@
 
 import { unzipSync, zipSync } from "fflate";
 import { version } from "../../package.json";
+import { recoverSDLKeyCodeFromBrokenAsciiEvent, toSDLKeyCode } from "./dos-input";
 import { PROCESSOR_NAME, WORKLET_URL } from "./dos-audio-worklet";
 import { SingleFlight } from "./single-flight";
 
@@ -66,6 +67,7 @@ interface DosboxModule {
 
 interface DosboxModuleOptions {
   canvas: HTMLCanvasElement;
+  keyboardListeningElement?: HTMLElement;
   noInitialRun: boolean;
   noExitRuntime: boolean;
   SDL_numSimultaneouslyQueuedBuffers?: number;
@@ -283,95 +285,6 @@ function toSDLMouseButton(button: number): number {
   return 1;
 }
 
-interface DomKeyInfo {
-  keyCode: number;
-  key: string;
-  code: string;
-  location?: number;
-  charCode?: number;
-}
-
-function toDOMKeyInfo(code: number): DomKeyInfo | null {
-  if (code >= 65 && code <= 90) {
-    const ch = String.fromCharCode(code);
-    return { keyCode: code, key: ch.toLowerCase(), code: `Key${ch}`, charCode: code + 32 };
-  }
-  if (code >= 48 && code <= 57) {
-    const ch = String.fromCharCode(code);
-    return { keyCode: code, key: ch, code: `Digit${ch}`, charCode: code };
-  }
-  if (code >= 290 && code <= 301) {
-    const n = code - 289;
-    return { keyCode: 111 + n, key: `F${n}`, code: `F${n}` };
-  }
-  if (code >= 320 && code <= 329) {
-    const n = code - 320;
-    return { keyCode: 96 + n, key: String(n), code: `Numpad${n}`, location: 3, charCode: 48 + n };
-  }
-  const map: Record<number, DomKeyInfo> = {
-    32: { keyCode: 32, key: " ", code: "Space", charCode: 32 },
-    39: { keyCode: 222, key: "'", code: "Quote", charCode: 39 },
-    44: { keyCode: 188, key: ",", code: "Comma", charCode: 44 },
-    45: { keyCode: 189, key: "-", code: "Minus", charCode: 45 },
-    46: { keyCode: 190, key: ".", code: "Period", charCode: 46 },
-    47: { keyCode: 191, key: "/", code: "Slash", charCode: 47 },
-    59: { keyCode: 186, key: ";", code: "Semicolon", charCode: 59 },
-    61: { keyCode: 187, key: "=", code: "Equal", charCode: 61 },
-    91: { keyCode: 219, key: "[", code: "BracketLeft", charCode: 91 },
-    92: { keyCode: 220, key: "\\", code: "Backslash", charCode: 92 },
-    93: { keyCode: 221, key: "]", code: "BracketRight", charCode: 93 },
-    96: { keyCode: 192, key: "`", code: "Backquote", charCode: 96 },
-    256: { keyCode: 27, key: "Escape", code: "Escape" },
-    257: { keyCode: 13, key: "Enter", code: "Enter" },
-    258: { keyCode: 9, key: "Tab", code: "Tab" },
-    259: { keyCode: 8, key: "Backspace", code: "Backspace" },
-    260: { keyCode: 45, key: "Insert", code: "Insert" },
-    261: { keyCode: 46, key: "Delete", code: "Delete" },
-    262: { keyCode: 39, key: "ArrowRight", code: "ArrowRight" },
-    263: { keyCode: 37, key: "ArrowLeft", code: "ArrowLeft" },
-    264: { keyCode: 40, key: "ArrowDown", code: "ArrowDown" },
-    265: { keyCode: 38, key: "ArrowUp", code: "ArrowUp" },
-    266: { keyCode: 33, key: "PageUp", code: "PageUp" },
-    267: { keyCode: 34, key: "PageDown", code: "PageDown" },
-    268: { keyCode: 36, key: "Home", code: "Home" },
-    269: { keyCode: 35, key: "End", code: "End" },
-    280: { keyCode: 20, key: "CapsLock", code: "CapsLock" },
-    281: { keyCode: 145, key: "ScrollLock", code: "ScrollLock" },
-    282: { keyCode: 144, key: "NumLock", code: "NumLock" },
-    330: { keyCode: 110, key: ".", code: "NumpadDecimal", location: 3, charCode: 46 },
-    331: { keyCode: 111, key: "/", code: "NumpadDivide", location: 3, charCode: 47 },
-    332: { keyCode: 106, key: "*", code: "NumpadMultiply", location: 3, charCode: 42 },
-    333: { keyCode: 109, key: "-", code: "NumpadSubtract", location: 3, charCode: 45 },
-    334: { keyCode: 107, key: "+", code: "NumpadAdd", location: 3, charCode: 43 },
-    335: { keyCode: 13, key: "Enter", code: "NumpadEnter", location: 3 },
-    340: { keyCode: 16, key: "Shift", code: "ShiftLeft", location: 1 },
-    341: { keyCode: 17, key: "Control", code: "ControlLeft", location: 1 },
-    342: { keyCode: 18, key: "Alt", code: "AltLeft", location: 1 },
-    344: { keyCode: 16, key: "Shift", code: "ShiftRight", location: 2 },
-    345: { keyCode: 17, key: "Control", code: "ControlRight", location: 2 },
-    346: { keyCode: 18, key: "Alt", code: "AltRight", location: 2 },
-  };
-  return map[code] ?? null;
-}
-
-function dispatchKeyboard(type: "keydown" | "keyup" | "keypress", info: DomKeyInfo): void {
-  const charCode = type === "keypress" ? (info.charCode ?? info.keyCode) : 0;
-  const event = new KeyboardEvent(type, {
-    bubbles: true,
-    cancelable: true,
-    key: info.key,
-    code: info.code,
-    location: info.location ?? 0,
-  });
-  Object.defineProperties(event, {
-    keyCode: { get: () => info.keyCode },
-    which: { get: () => type === "keypress" ? charCode : info.keyCode },
-    charCode: { get: () => charCode },
-    location: { get: () => info.location ?? 0 },
-  });
-  document.dispatchEvent(event);
-}
-
 class EventHub implements CommandInterfaceEvents {
   private frameFns: Array<(rgb: Uint8Array | null, rgba: Uint8Array | null) => void> = [];
   private frameSizeFns: Array<(w: number, h: number) => void> = [];
@@ -435,6 +348,7 @@ export class DosEmulator {
   private readonly onTouchStart: (e: TouchEvent) => void;
   private readonly onTouchMove: (e: TouchEvent) => void;
   private readonly onTouchEnd: (e: TouchEvent) => void;
+  private readonly onKeyCapture: (e: KeyboardEvent) => void;
   private readonly onContextMenu: (e: MouseEvent) => void;
   private gestureUnlock: ((e: Event) => void) | null = null;
 
@@ -450,6 +364,7 @@ export class DosEmulator {
     this.onTouchStart = (e) => this.handleTouchEvent(e, "down");
     this.onTouchMove = (e) => this.handleTouchEvent(e, "move");
     this.onTouchEnd = (e) => this.handleTouchEvent(e, "up");
+    this.onKeyCapture = (e) => this.handleKeyCapture(e);
     this.onContextMenu = (e) => e.preventDefault();
 
     void this.boot().catch((err) => opts.onError?.(err));
@@ -460,6 +375,7 @@ export class DosEmulator {
     let module!: DosboxModule;
     module = await factory({
       canvas: this.canvas,
+      keyboardListeningElement: this.canvas,
       noInitialRun: true,
       noExitRuntime: true,
       SDL_numSimultaneouslyQueuedBuffers: 3,
@@ -498,6 +414,7 @@ export class DosEmulator {
     await this.opts.onBeforeStart?.();
     if (this.exiting) return;
     module.callMain(["-conf", "/dosbox.conf"]);
+    this.focusCanvas();
     this.opts.onReady?.(this.ci);
   }
 
@@ -532,10 +449,13 @@ export class DosEmulator {
   }
 
   private sendKey(code: number, pressed: boolean): void {
-    const info = toDOMKeyInfo(code);
-    if (!info) return;
-    dispatchKeyboard(pressed ? "keydown" : "keyup", info);
-    if (pressed && info.charCode) dispatchKeyboard("keypress", info);
+    const sdlKeyCode = toSDLKeyCode(code);
+    if (sdlKeyCode === null) return;
+    this.sendSDLKey(sdlKeyCode, pressed);
+  }
+
+  private sendSDLKey(sdlKeyCode: number, pressed: boolean): void {
+    this.module?.ccall("send_key", null, ["number", "number"], [sdlKeyCode, pressed ? 1 : 0]);
   }
 
   private async mountDrive(module: DosboxModule, zipBytes: Uint8Array, progressBase: number, progressSpan: number): Promise<void> {
@@ -829,6 +749,8 @@ export class DosEmulator {
   };
 
   private attachListeners(): void {
+    this.canvas.addEventListener("keydown", this.onKeyCapture, true);
+    this.canvas.addEventListener("keyup", this.onKeyCapture, true);
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
@@ -838,6 +760,16 @@ export class DosEmulator {
     window.addEventListener("touchend", this.onTouchEnd, { passive: false, capture: true });
     window.addEventListener("touchcancel", this.onTouchEnd, { passive: false, capture: true });
     this.canvas.addEventListener("contextmenu", this.onContextMenu);
+  }
+
+  private handleKeyCapture(e: KeyboardEvent): void {
+    if (!this.ci || (e.type !== "keydown" && e.type !== "keyup")) return;
+    const sdlKeyCode = recoverSDLKeyCodeFromBrokenAsciiEvent(e);
+    if (sdlKeyCode === null) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    this.sendSDLKey(sdlKeyCode, e.type === "keydown");
   }
 
   private handlePointer(e: PointerEvent, kind: "down" | "move" | "up"): void {
@@ -1022,6 +954,8 @@ export class DosEmulator {
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
+    this.canvas.removeEventListener("keydown", this.onKeyCapture, true);
+    this.canvas.removeEventListener("keyup", this.onKeyCapture, true);
     window.removeEventListener("touchstart", this.onTouchStart, true);
     window.removeEventListener("touchmove", this.onTouchMove, true);
     window.removeEventListener("touchend", this.onTouchEnd, true);
